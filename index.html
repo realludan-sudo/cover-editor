@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Tool 封面编辑器</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+SC:wght@400;700&display=swap');
+  /* Dark theme (default) */
+  :root, [data-theme="dark"] {
+    --bg:#0f0f13; --surface:#1a1a22; --surface2:#22222e; --border:#2a2a38;
+    --text:#e8e6f0; --text2:#8a87a0; --accent:#a78bfa; --accent2:#e879a8;
+    --radius:12px; --shadow:0 1px 3px rgba(0,0,0,.3);
+    --canvas-bg:#0f0f13; --tl-bg:rgba(26,26,34,.95);
+  }
+  /* Light theme */
+  [data-theme="light"] {
+    --bg:#f5f5f7; --surface:#ffffff; --surface2:#f0f0f2; --border:#e0dfe3;
+    --text:#1a1a2e; --text2:#6b6b80; --accent:#7c5ce0; --accent2:#d6438a;
+    --shadow:0 1px 3px rgba(0,0,0,.08);
+    --canvas-bg:#e8e8ec; --tl-bg:rgba(255,255,255,.95);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+  .app{display:grid;grid-template-columns:1fr 320px;height:100vh}
+  .preview-area{display:flex;align-items:center;justify-content:center;padding:12px 24px;background:var(--canvas-bg);position:relative;overflow:hidden}
+  .preview-area::before{display:none}
+  .preview-inner{display:flex;flex-direction:column;align-items:center;gap:4px;max-width:100%;max-height:100%;width:100%;height:100%;position:relative}
+  .canvas-container{position:relative;width:800px;height:600px;border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.25),0 0 0 1px var(--border);transition:width .3s,height .3s;flex-shrink:0}
+  .bottom-timeline{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:calc(100% - 48px);max-width:900px;background:var(--tl-bg);border-radius:10px;padding:6px 14px 8px;backdrop-filter:blur(12px);border:1px solid var(--border);z-index:5;box-shadow:var(--shadow)}
+  .btl-controls{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  #coverCanvas{width:100%;height:100%;display:block}
+  .sidebar{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+  .tab-bar{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;padding:0 4px}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 4px 8px;cursor:pointer;font-size:15px;color:var(--text2);transition:all .15s;border-bottom:2px solid transparent;border-radius:0}
+  .tab span{font-size:10px;font-weight:600;letter-spacing:.02em}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab-body{flex:1;overflow:hidden;position:relative}
+  .tab-pane{position:absolute;inset:0;display:none;flex-direction:column}
+  .tab-pane.active{display:flex}
+  .pane-inner{flex:1;overflow-y:auto;padding:16px 20px}
+  .sidebar-footer{padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0}
+
+  /* Theme toggle */
+  /* Canvas toolbar */
+  .canvas-toolbar{display:flex;align-items:center;justify-content:center;gap:12px;flex-shrink:0;padding:4px 0}
+  .toolbar-select{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text);outline:none;cursor:pointer}
+  .snap-overlay{position:absolute;border-radius:8px;background:rgba(167,139,250,.15);border:2px dashed rgba(167,139,250,.5);pointer-events:none;z-index:1;transition:all .15s}
+
+  .theme-toggle{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;z-index:10;transition:all .2s;box-shadow:var(--shadow)}
+  .theme-toggle:hover{border-color:var(--accent);transform:scale(1.08)}
+  .upload-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .upload-zone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:16px 10px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+  .upload-zone:hover{border-color:var(--accent);background:rgba(167,139,250,.05)}
+  .upload-zone.has-image{border-color:rgba(167,139,250,.3);background:rgba(167,139,250,.05)}
+  .upload-zone .icon{font-size:24px;margin-bottom:6px;display:block}
+  .upload-zone .label{font-size:11px;font-weight:600;color:var(--text2)}
+  .upload-zone .check{display:none;position:absolute;top:6px;right:6px;width:18px;height:18px;background:var(--accent);border-radius:50%;color:white;font-size:10px;line-height:18px;text-align:center}
+  .upload-zone.has-image .check{display:block}
+  input[type="file"]{display:none}
+  .control-group{margin-bottom:14px}.control-group:last-child{margin-bottom:0}
+  .control-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .control-label span{font-size:12px;font-weight:500;color:var(--text)}
+  .control-label .value{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2)}
+  input[type="range"]{width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:2px;outline:none}
+  input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:var(--accent);border-radius:50%;cursor:pointer;box-shadow:0 2px 8px rgba(167,139,250,.4)}
+  .text-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);outline:none;transition:border-color .2s;margin-bottom:10px}
+  .text-input:focus{border-color:var(--accent)}.text-input:last-child{margin-bottom:0}
+  .color-row{display:flex;gap:10px;align-items:center}
+  .color-pick{display:flex;align-items:center;gap:6px;flex:1}
+  .color-pick label{font-size:11px;color:var(--text2);white-space:nowrap}
+  .color-pick input[type="color"]{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;background:none;padding:0}
+  .color-pick input[type="color"]::-webkit-color-swatch-wrapper{padding:2px}
+  .color-pick input[type="color"]::-webkit-color-swatch{border-radius:4px;border:none}
+  .checkbox-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .checkbox-row input[type="checkbox"]{accent-color:var(--accent);width:15px;height:15px}
+  .checkbox-row label{font-size:12px;color:var(--text);cursor:pointer}
+  .btn-export{width:100%;padding:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:white;cursor:pointer;transition:all .2s}
+  .btn-export:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 8px 24px rgba(167,139,250,.3)}
+  .export-hint{text-align:center;font-size:11px;color:var(--text2);margin-top:6px}
+  select.text-input{cursor:pointer}
+  .btn-small{padding:8px 14px;background:var(--accent);border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:white;cursor:pointer;white-space:nowrap}
+  .btn-small:hover{opacity:.85}.btn-small:disabled{opacity:.4;cursor:not-allowed}
+
+  /* Text boxes */
+  .tb-item{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;margin-bottom:4px;border-radius:6px;cursor:pointer;font-size:12px;background:var(--surface2);border:1px solid transparent;transition:all .15s}
+  .tb-item:hover{border-color:var(--border)}.tb-item.active{border-color:var(--accent);background:rgba(167,139,250,.1)}
+  .tb-item .tb-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .tb-item .tb-del,.mosaic-item .m-del{width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:14px;color:var(--text2);cursor:pointer;flex-shrink:0}
+  .tb-item .tb-del:hover,.mosaic-item .m-del:hover{color:#ef4444;background:rgba(239,68,68,.1)}
+  #textBoxProps{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+
+  /* Mosaic list */
+  .mosaic-item{display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:4px;border-radius:6px;cursor:pointer;font-size:12px;background:var(--surface2);border:1px solid transparent}
+  .mosaic-item:hover{border-color:var(--border)}.mosaic-item.active{border-color:var(--accent);background:rgba(167,139,250,.1)}
+  .mosaic-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+  .mosaic-info{flex:1;overflow:hidden;line-height:1.4}
+
+  /* Timeline */
+  .timeline-wrap{background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px}
+  .timeline-tracks{position:relative;min-height:20px;margin-bottom:4px;cursor:pointer}
+  .tl-row{position:relative;height:18px;margin-bottom:3px}
+  .tl-bar{position:absolute;height:100%;border-radius:4px;opacity:.6;cursor:grab;font-size:9px;color:white;display:flex;align-items:center;padding-left:14px;overflow:hidden;user-select:none}
+  .tl-bar.active{opacity:1;outline:1.5px solid rgba(255,255,255,.7)}
+  .tl-handle{position:absolute;top:0;width:10px;height:100%;cursor:ew-resize;z-index:1}
+  .tl-handle::after{content:'';position:absolute;top:3px;bottom:3px;width:2px;background:rgba(255,255,255,.7);border-radius:1px}
+  .tl-handle.left{left:0;border-radius:4px 0 0 4px}.tl-handle.left::after{left:3px}
+  .tl-handle.right{right:0;border-radius:0 4px 4px 0}.tl-handle.right::after{right:3px}
+  .tl-handle:hover::after{background:white;width:3px}
+  .tl-kf{position:absolute;top:50%;width:6px;height:6px;background:white;transform:translate(-50%,-50%) rotate(45deg);pointer-events:none;opacity:.8}
+  .tl-playhead{position:absolute;top:-2px;bottom:-2px;width:3px;background:white;border-radius:2px;z-index:3;cursor:ew-resize;transform:translateX(-1px)}
+  .tl-playhead::before{content:'';position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:10px;height:10px;background:white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .tl-playhead::after{content:'';position:absolute;left:-6px;right:-6px;top:0;bottom:0}
+  .tl-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--text2);font-family:'JetBrains Mono',monospace}
+  #mosaicProps{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="preview-area">
+    <button class="theme-toggle" onclick="toggleTheme()" title="切换亮/暗模式" id="themeBtn">☀️</button>
+    <div class="preview-inner">
+      <div class="canvas-toolbar">
+        <select class="toolbar-select" id="aspectRatio" onchange="changeRatio()">
+          <option value="4:3" selected>4:3</option><option value="16:9">16:9</option><option value="3:2">3:2</option><option value="1:1">1:1</option><option value="9:16">9:16</option><option value="3:4">3:4</option><option value="2:1">2:1</option><option value="21:9">21:9</option>
+        </select>
+      </div>
+      <div class="canvas-container">
+        <canvas id="coverCanvas" width="1200" height="900"></canvas>
+      </div>
+      <div class="bottom-timeline" id="bottomTimeline" style="display:none;">
+        <div class="btl-controls">
+          <button class="btn-small" id="btnPlay" onclick="togglePlay()">▶ 播放</button>
+          <span id="curTimeLabel" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text);">0:00.0</span>
+          <span style="font-size:11px;color:var(--text2);" id="durLabel">/ 0:00.0</span>
+          <div style="flex:1"></div>
+          <button class="btn-small" id="btnExport" onclick="exportVideo()" style="background:var(--accent2);padding:6px 12px;font-size:11px;">导出视频</button>
+        </div>
+        <div class="timeline-wrap" id="timelineWrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchTab('upload')">📷<span>上传</span></div>
+      <div class="tab" onclick="switchTab('mosaic')">🔮<span>马赛克</span></div>
+      <div class="tab" onclick="switchTab('text')">✏️<span>文字</span></div>
+      <div class="tab" onclick="switchTab('style')">🎨<span>样式</span></div>
+    </div>
+
+    <div class="tab-body">
+      <!-- Upload -->
+      <div class="tab-pane active" id="pane-upload">
+        <div class="pane-inner">
+          <div class="upload-row">
+            <div class="upload-zone" id="uploadBefore" onclick="$('fileBefore').click()"><span class="icon">🖼</span><span class="label">原图 Before</span><span class="check">✓</span></div>
+            <div class="upload-zone" id="uploadAfter" onclick="$('fileAfter').click()"><span class="icon">✨</span><span class="label">效果图 After</span><span class="check">✓</span></div>
+          </div>
+          <input type="file" id="fileBefore" accept="image/*,video/*">
+          <input type="file" id="fileAfter" accept="image/*,video/*">
+          <div id="trackStatus" style="font-size:11px;color:var(--accent);text-align:center;margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- Mosaic -->
+      <div class="tab-pane" id="pane-mosaic">
+        <div class="pane-inner">
+          <button class="btn-small" onclick="addMosaic()" style="width:100%;margin-bottom:12px;">+ 添加马赛克</button>
+          <div id="mosaicList"></div>
+          <div id="mosaicProps" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div class="control-group" style="margin-bottom:8px;"><div class="control-label"><span>面板</span></div><select class="text-input" id="mPanel" style="margin-bottom:0;"><option value="before">原图</option><option value="after" selected>效果图</option></select></div>
+              <div class="control-group" style="margin-bottom:8px;"><div class="control-label"><span>大小</span><span class="value" id="vMSize">60%</span></div><input type="range" id="mSize" min="20" max="100" value="60" style="margin-top:4px;"></div>
+            </div>
+            <div class="control-group"><div class="color-row"><div class="color-pick"><label>色1</label><input type="color" id="mColor1" value="#ffb4d2"></div><div class="color-pick"><label>色2</label><input type="color" id="mColor2" value="#c8a0ff"></div></div></div>
+            <div class="checkbox-row"><input type="checkbox" id="mSparkle" checked><label for="mSparkle">显示✦符号</label></div>
+            <div id="mTrackSection" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+              <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:8px;">🎯 跟踪</div>
+              <div class="control-group" style="margin-bottom:8px;"><select class="text-input" id="mTrackDir" style="margin-bottom:0;"><option value="both">双向跟踪</option><option value="forward">向前跟踪</option><option value="backward">向后跟踪</option></select></div>
+              <button class="btn-small" id="btnStartTrack" onclick="startTracking()" style="width:100%;background:linear-gradient(135deg,#06b6d4,#0ea5e9);margin-bottom:6px;">开始跟踪</button>
+              <div id="trackProgress" style="display:none;margin-bottom:6px;"><div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden;"><div id="trackProgressBar" style="height:100%;background:linear-gradient(90deg,#06b6d4,#0ea5e9);border-radius:4px;width:0%;transition:width .1s;"></div></div><div id="trackProgressText" style="font-size:10px;color:var(--text2);text-align:center;margin-top:4px;">0%</div></div>
+              <button class="btn-small" onclick="addKeyframe()" style="width:100%;background:#7c3aed;margin-bottom:6px;">◆ 添加关键帧</button>
+              <div class="checkbox-row"><input type="checkbox" id="mShowTraj"><label for="mShowTraj">显示轨迹</label></div>
+              <div id="trackResultInfo" style="font-size:11px;color:var(--accent);"></div>
+            </div>
+            <button class="btn-small" style="width:100%;background:#ef4444;margin-top:8px;" onclick="deleteMosaic(selectedMosaicId)">删除</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Text -->
+      <div class="tab-pane" id="pane-text">
+        <div class="pane-inner">
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <input class="text-input" type="text" id="newTextInput" placeholder="输入文字" style="margin-bottom:0;flex:1;" onkeydown="if(event.key==='Enter')addTextBox()">
+            <button class="btn-small" onclick="addTextBox()">添加</button>
+          </div>
+          <div id="textBoxList"></div>
+          <div id="textBoxProps" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <input class="text-input" type="text" id="tbEditText" placeholder="编辑文字" style="margin-bottom:8px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div class="control-group" style="margin-bottom:8px;"><div class="control-label"><span>字体</span></div><select class="text-input" id="tbFont" style="margin-bottom:0;"><option value="DM Sans">DM Sans</option><option value="JetBrains Mono">JetBrains Mono</option><option value="Georgia">Georgia</option><option value="Arial">Arial</option><option value="Impact">Impact</option><option value="Noto Serif SC">宋体 Serif</option></select></div>
+              <div class="control-group" style="margin-bottom:8px;"><div class="control-label"><span>字重</span></div><select class="text-input" id="tbWeight" style="margin-bottom:0;"><option value="400">常规</option><option value="500">中等</option><option value="600">半粗</option><option value="700">粗体</option><option value="800">超粗</option></select></div>
+            </div>
+            <div class="control-group"><div class="control-label"><span>字号</span><span class="value" id="vTbSize">24px</span></div><input type="range" id="tbSize" min="8" max="120" value="24"></div>
+            <div class="control-group"><div class="color-row"><div class="color-pick"><label>颜色</label><input type="color" id="tbColor" value="#ffffff"></div></div></div>
+            <button class="btn-small" style="width:100%;background:#ef4444;margin-top:8px;" onclick="deleteTextBox(selectedTextId)">删除</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Style -->
+      <div class="tab-pane" id="pane-style">
+        <div class="pane-inner">
+          <div class="control-group"><div class="control-label"><span>背景样式</span></div>
+            <select class="text-input" id="bgStyle"><option value="light">浅色简洁</option><option value="dark">深色科技</option><option value="gradient">渐变梦幻</option></select>
+          </div>
+          <div class="checkbox-row"><input type="checkbox" id="showVideoBadge" checked><label for="showVideoBadge">显示 Video Output 标签</label></div>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="btn-export" onclick="exportCover()">📥 导出封面 PNG</button>
+      <div class="export-hint" id="exportHint">4:3 · 1200×900 高清导出</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('coverCanvas');
+const ctx = canvas.getContext('2d');
+let W = 1200, H = 900;
+const RATIO_MAP = {'4:3':{w:1200,h:900},'16:9':{w:1280,h:720},'3:2':{w:1200,h:800},'1:1':{w:1000,h:1000},'9:16':{w:720,h:1280},'3:4':{w:900,h:1200},'2:1':{w:1200,h:600},'21:9':{w:1260,h:540}};
+function $(id){return document.getElementById(id)}
+
+function changeRatio(){
+  const r=$('aspectRatio').value,s=RATIO_MAP[r];W=s.w;H=s.h;canvas.width=W;canvas.height=H;
+  const c=document.querySelector('.canvas-container'),a=document.querySelector('.preview-area');
+  const sc=Math.min((a.clientWidth-60)/W,(a.clientHeight-40)/H,1);
+  c.style.width=(W*sc)+'px';c.style.height=(H*sc)+'px';
+  const btl=$('bottomTimeline');if(btl)btl.style.maxWidth=(W*sc)+'px';
+  $('exportHint').textContent=r+' · '+W+'×'+H+' 高清导出';draw();
+}
+
+// ========== MEDIA ==========
+let imgBefore=null,imgAfter=null,videoBefore=null,videoAfter=null;
+let currentTime=0;
+
+function getVideoDuration(){
+  let d=0;
+  if(videoBefore)d=Math.max(d,videoBefore.duration||0);
+  if(videoAfter)d=Math.max(d,videoAfter.duration||0);
+  return d;
+}
+function hasVideo(){return !!(videoBefore||videoAfter)}
+function fmtTime(s){const m=Math.floor(s/60);const sec=(s%60).toFixed(1);return m+':'+(sec<10?'0':'')+sec}
+
+function handleUpload(which,file){
+  const isV=file.type.startsWith('video/');
+  if(isV){
+    const v=document.createElement('video');v.muted=true;v.preload='auto';v.playsInline=true;
+    v.addEventListener('loadedmetadata',()=>{
+      const dur=getVideoDuration()||v.duration;
+      $('durLabel').textContent='/ '+fmtTime(Math.max(dur,v.duration));
+      $('bottomTimeline').style.display='block';
+      // Update mosaic time sliders
+      mosaics.forEach(m=>{if(m.endTime<0)m.endTime=Math.max(dur,v.duration)});
+      showMosaicProps();
+      v.currentTime=Math.min(1,v.duration);
+    });
+    v.addEventListener('seeked',()=>{
+      const c2=document.createElement('canvas');c2.width=v.videoWidth;c2.height=v.videoHeight;
+      c2.getContext('2d').drawImage(v,0,0);
+      const img=new Image();img.onload=()=>{
+        if(which==='Before'){imgBefore=img;$('uploadBefore').classList.add('has-image')}
+        else{imgAfter=img;$('uploadAfter').classList.add('has-image')}
+        draw();renderTimeline();
+      };img.src=c2.toDataURL();
+    });
+    v.src=URL.createObjectURL(file);
+    if(which==='Before')videoBefore=v;else videoAfter=v;
+  } else {
+    const img=new Image();img.onload=()=>{
+      if(which==='Before'){imgBefore=img;videoBefore=null;$('uploadBefore').classList.add('has-image')}
+      else{imgAfter=img;videoAfter=null;$('uploadAfter').classList.add('has-image')}
+      draw();
+    };img.src=URL.createObjectURL(file);
+  }
+}
+
+$('fileBefore').addEventListener('change',e=>{if(e.target.files[0])handleUpload('Before',e.target.files[0])});
+$('fileAfter').addEventListener('change',e=>{if(e.target.files[0])handleUpload('After',e.target.files[0])});
+
+function seekToTime(t){
+  const dur=getVideoDuration();
+  currentTime=Math.max(0,Math.min(dur,t));
+  $('curTimeLabel').textContent=fmtTime(currentTime);
+  // Immediately redraw with trajectory (uses currentTime for tracked positions)
+  draw();
+  renderTimeline();
+  // Async: seek videos and redraw with new video frame when ready
+  let pending=0;
+  function onSeeked(){pending--;if(pending<=0)draw()}
+  if(videoBefore&&currentTime<=videoBefore.duration){
+    pending++;videoBefore.currentTime=currentTime;
+    videoBefore.addEventListener('seeked',onSeeked,{once:true});
+  }
+  if(videoAfter&&currentTime<=videoAfter.duration){
+    pending++;videoAfter.currentTime=currentTime;
+    videoAfter.addEventListener('seeked',onSeeked,{once:true});
+  }
+}
+
+document.querySelectorAll('#bgStyle,#showVideoBadge').forEach(el=>{el.addEventListener('input',draw);el.addEventListener('change',draw)});
+
+function hexToRgba(hex,a){return `rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${a})`}
+function getSourceSize(s){return s instanceof HTMLVideoElement?{width:s.videoWidth,height:s.videoHeight}:{width:s.width,height:s.height}}
+function drawImageCover(ctx,src,x,y,w,h){const d=getSourceSize(src),ar=d.width/d.height,tr=w/h;let sx,sy,sw,sh;if(ar>tr){sh=d.height;sw=sh*tr;sx=(d.width-sw)/2;sy=0}else{sw=d.width;sh=sw/tr;sx=0;sy=(d.height-sh)/2}ctx.drawImage(src,sx,sy,sw,sh,x,y,w,h)}
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+
+// ========== MOSAICS ==========
+let layout={leftX:0,leftY:0,rightX:0,rightY:0,panelW:0,panelH:0};
+const MOSAIC_COLORS=[['#ffb4d2','#c8a0ff'],['#a0d4ff','#60b0ff'],['#90f0c0','#40d090'],['#ffd080','#ff9040'],['#ff9090','#ff5050']];
+let mosaics=[
+  {id:1,panel:'after',x:50,y:50,startTime:0,endTime:-1,color1:'#ffb4d2',color2:'#c8a0ff',sparkle:true,size:60,tracked:false,trajectory:[]}
+];
+let selectedMosaicId=1,nextMosaicId=2;
+
+function addMosaic(){
+  const ci=mosaics.length%MOSAIC_COLORS.length;
+  const dur=getVideoDuration();
+  mosaics.push({id:nextMosaicId++,panel:'after',x:30+Math.random()*40,y:30+Math.random()*40,startTime:0,endTime:dur>0?dur:-1,color1:MOSAIC_COLORS[ci][0],color2:MOSAIC_COLORS[ci][1],sparkle:true,size:60,tracked:false,trajectory:[]});
+  selectedMosaicId=mosaics[mosaics.length-1].id;
+  renderMosaicList();showMosaicProps();renderTimeline();draw();
+}
+function deleteMosaic(id){
+  mosaics=mosaics.filter(m=>m.id!==id);
+  if(selectedMosaicId===id)selectedMosaicId=mosaics.length?mosaics[0].id:null;
+  renderMosaicList();showMosaicProps();renderTimeline();draw();
+}
+function selectMosaic(id){selectedMosaicId=id;renderMosaicList();showMosaicProps();renderTimeline();draw()}
+
+function renderMosaicList(){
+  $('mosaicList').innerHTML=mosaics.map(m=>{
+    const pl=m.panel==='before'?'原图':'效果图';
+    const dur=getVideoDuration();
+    const tl=dur>0?fmtTime(m.startTime)+' - '+(m.endTime>=dur?'结束':fmtTime(m.endTime)):'全程';
+    return `<div class="mosaic-item ${m.id===selectedMosaicId?'active':''}" onclick="selectMosaic(${m.id})">
+      <div class="mosaic-dot" style="background:linear-gradient(135deg,${m.color1},${m.color2})"></div>
+      <div class="mosaic-info"><div style="font-weight:600">${pl}</div><div style="font-size:10px;color:var(--text2)">${tl}</div></div>
+      <span class="m-del" onclick="event.stopPropagation();deleteMosaic(${m.id})">×</span></div>`;
+  }).join('');
+}
+
+function showMosaicProps(){
+  const p=$('mosaicProps'),m=mosaics.find(v=>v.id===selectedMosaicId);
+  if(!m){p.style.display='none';return}
+  p.style.display='block';
+  $('mPanel').value=m.panel;$('mSize').value=m.size;$('vMSize').textContent=m.size+'%';
+  $('mColor1').value=m.color1;$('mColor2').value=m.color2;$('mSparkle').checked=m.sparkle;
+  updateMosaicTimeSliders();
+  const hv=hasVideo();
+  $('mTrackSection').style.display=hv?'block':'none';
+  $('trackResultInfo').textContent=m.tracked&&m.trajectory.length?`◆ ${m.trajectory.length} 个关键帧`:'';
+  $('trackProgress').style.display='none';
+}
+function updateMosaicTimeSliders(){}
+function updateMosaicProp(prop,val){const m=mosaics.find(v=>v.id===selectedMosaicId);if(!m)return;m[prop]=val;renderMosaicList();renderTimeline();draw()}
+
+// Mosaic property bindings
+$('mPanel').addEventListener('change',function(){updateMosaicProp('panel',this.value)});
+$('mSize').addEventListener('input',function(){$('vMSize').textContent=this.value+'%';updateMosaicProp('size',parseInt(this.value))});
+$('mColor1').addEventListener('input',function(){updateMosaicProp('color1',this.value)});
+$('mColor2').addEventListener('input',function(){updateMosaicProp('color2',this.value)});
+$('mSparkle').addEventListener('change',function(){updateMosaicProp('sparkle',this.checked)});
+
+function getActiveMosaics(panel,time){
+  const dur=getVideoDuration();
+  return mosaics.filter(m=>{
+    if(m.panel!==panel)return false;
+    if(dur<=0)return true;// no video = always show
+    const end=m.endTime<0?dur:m.endTime;
+    return time>=m.startTime&&time<=end;
+  });
+}
+
+function drawGlow(px,py,pw,ph,m){
+  // Use pre-computed trajectory if available
+  let posX=m.x,posY=m.y;
+  if(m.tracked&&m.trajectory&&m.trajectory.length>0&&hasVideo()){
+    const tp=getTrajectoryPos(m,currentTime);
+    posX=tp.x;posY=tp.y;
+  }
+  const mx=posX/100,my=posY/100;
+  const sz=m.size/100;
+  const cx=px+pw*mx,cy=py+ph*my,rw=pw*sz*0.5,rh=ph*sz*0.58;
+  for(let i=3;i>=0;i--){
+    const sc=1+i*0.15;ctx.save();const ratio=rh/rw||1;ctx.scale(1,ratio);const adjY=cy/ratio;
+    const grad=ctx.createRadialGradient(cx,adjY,0,cx,adjY,rw*sc);
+    grad.addColorStop(0,hexToRgba(m.color1,.85-i*.12));grad.addColorStop(.3,hexToRgba(m.color2,.6-i*.1));
+    grad.addColorStop(.6,hexToRgba(m.color1,.3-i*.06));grad.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=grad;ctx.fillRect(px,py/ratio,pw,ph/ratio);ctx.restore();
+  }
+  if(m.sparkle){
+    ctx.fillStyle='rgba(255,255,255,.7)';ctx.font=`${Math.round(Math.min(W,H)*.032)}px serif`;
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(255,255,255,.5)';ctx.shadowBlur=20;
+    ctx.fillText('✦',cx,cy);ctx.shadowBlur=0;
+  }
+}
+
+// ========== TIMELINE ==========
+let tlDrag=null; // {type:'left'|'right'|'move'|'seek', mosaicId, startX, origStart, origEnd}
+
+function renderTimeline(){
+  const dur=getVideoDuration();if(dur<=0){$('timelineWrap').innerHTML='';return}
+  let html='<div class="timeline-tracks" id="tlTracks">';
+  mosaics.forEach(m=>{
+    const s=m.startTime/dur*100;
+    const end=m.endTime<0?dur:m.endTime;
+    const e=end/dur*100;
+    const active=m.id===selectedMosaicId?'active':'';
+    html+=`<div class="tl-row"><div class="tl-bar ${active}" style="left:${s}%;width:${Math.max(2,e-s)}%;background:linear-gradient(90deg,${m.color1},${m.color2})" data-mid="${m.id}">`;
+    html+=`<div class="tl-handle left" data-mid="${m.id}" data-edge="left"></div>`;
+    html+=`${m.panel==='before'?'原':'效'}`;
+    // Keyframe diamonds
+    if(m.trajectory&&m.trajectory.length>0){
+      const barStart=m.startTime,barEnd=m.endTime<0?dur:m.endTime,barLen=barEnd-barStart;
+      m.trajectory.forEach(k=>{
+        if(k.time>=barStart&&k.time<=barEnd){
+          const kp=((k.time-barStart)/barLen*100);
+          html+=`<div class="tl-kf" style="left:${kp}%"></div>`;
+        }
+      });
+    }
+    html+=`<div class="tl-handle right" data-mid="${m.id}" data-edge="right"></div>`;
+    html+=`</div></div>`;
+  });
+  const playPos=currentTime/dur*100;
+  html+=`<div class="tl-playhead" style="left:${playPos}%"></div>`;
+  html+='</div>';
+  html+=`<div class="tl-labels"><span>${fmtTime(currentTime)}</span><span>${fmtTime(dur)}</span></div>`;
+  $('timelineWrap').innerHTML=html;
+}
+
+// Timeline mouse interactions
+document.addEventListener('mousedown',e=>{
+  const playhead=e.target.closest('.tl-playhead');
+  const handle=e.target.closest('.tl-handle');
+  const bar=e.target.closest('.tl-bar');
+  const tracks=e.target.closest('#tlTracks');
+  if(!tracks)return;
+  const dur=getVideoDuration();if(dur<=0)return;
+  const rect=tracks.getBoundingClientRect();
+
+  if(playhead){
+    e.preventDefault();e.stopPropagation();
+    tlDrag={type:'playhead',rect,dur};return;
+  }
+  if(handle){
+    // Drag handle to resize
+    e.preventDefault();e.stopPropagation();
+    const mid=parseInt(handle.dataset.mid);
+    const m=mosaics.find(v=>v.id===mid);if(!m)return;
+    selectMosaic(mid);
+    tlDrag={type:handle.dataset.edge,mosaicId:mid,rect,dur,origStart:m.startTime,origEnd:m.endTime<0?dur:m.endTime};
+  } else if(bar){
+    // Drag bar to move
+    e.preventDefault();e.stopPropagation();
+    const mid=parseInt(bar.dataset.mid);
+    const m=mosaics.find(v=>v.id===mid);if(!m)return;
+    selectMosaic(mid);
+    const end=m.endTime<0?dur:m.endTime;
+    const clickTime=(e.clientX-rect.left)/rect.width*dur;
+    tlDrag={type:'move',mosaicId:mid,rect,dur,origStart:m.startTime,origEnd:end,clickOffset:clickTime-m.startTime};
+  } else {
+    // Click empty area to seek + start playhead drag
+    const pct=(e.clientX-rect.left)/rect.width;
+    seekToTime(pct*dur);
+    tlDrag={type:'playhead',rect,dur};
+  }
+});
+
+document.addEventListener('mousemove',e=>{
+  if(!tlDrag)return;
+  e.preventDefault();
+  const{type,mosaicId,rect,dur}=tlDrag;
+  const t=Math.max(0,Math.min(dur,(e.clientX-rect.left)/rect.width*dur));
+
+  if(type==='playhead'){
+    seekToTime(t);return;
+  }
+  const m=mosaics.find(v=>v.id===mosaicId);if(!m)return;
+  const end=m.endTime<0?dur:m.endTime;
+
+  if(type==='left'){
+    m.startTime=Math.max(0,Math.min(end-0.1,t));
+  } else if(type==='right'){
+    const newEnd=Math.max(m.startTime+0.1,Math.min(dur,t));
+    m.endTime=newEnd>=dur?-1:newEnd;
+  } else if(type==='move'){
+    const len=tlDrag.origEnd-tlDrag.origStart;
+    let newStart=t-tlDrag.clickOffset;
+    newStart=Math.max(0,Math.min(dur-len,newStart));
+    m.startTime=newStart;
+    const newEnd=newStart+len;
+    m.endTime=newEnd>=dur?-1:newEnd;
+  }
+  renderTimeline();renderMosaicList();
+});
+
+document.addEventListener('mouseup',()=>{tlDrag=null});
+
+// ========== PRE-COMPUTED TRACKER (improved) ==========
+const trackCanvas=document.createElement('canvas');
+const trackCtx=trackCanvas.getContext('2d',{willReadFrequently:true});
+const TMPL_SZ=80; // larger template for more features
+let isTracking=false;
+
+function waitSeek(v){return new Promise(r=>v.addEventListener('seeked',r,{once:true}))}
+
+function captureRegion(tctx,cx,cy,size,pw,ph){
+  const hs=Math.floor(size/2);
+  const sx=Math.max(0,Math.min(pw-size,cx-hs)),sy=Math.max(0,Math.min(ph-size,cy-hs));
+  const w=Math.min(size,pw-sx),h=Math.min(size,ph-sy);
+  return{data:tctx.getImageData(sx,sy,w,h),sx,sy,w,h};
+}
+
+// Full-panel search with 3-level pyramid: coarse(step=8) → medium(step=3) → fine(step=1)
+function matchInFrame(tctx,tmpl,predictCx,predictCy,pw,ph){
+  const ts=tmpl.w,th=tmpl.h;
+  // Search the entire panel
+  const x0=0,y0=0,x1=Math.max(0,pw-ts),y1=Math.max(0,ph-th);
+  if(x1<=0||y1<=0)return{x:predictCx,y:predictCy,score:Infinity};
+  const fullRegion=tctx.getImageData(0,0,pw,ph);
+  const td=tmpl.data.data,rd=fullRegion.data;
+
+  // Level 1: Coarse search across entire panel, step=8, sample every 6th pixel
+  let bX=Math.round(predictCx-ts/2),bY=Math.round(predictCy-th/2),bS=Infinity;
+  bX=Math.max(0,Math.min(x1,bX));bY=Math.max(0,Math.min(y1,bY));
+  for(let dy=0;dy<=y1;dy+=8){for(let dx=0;dx<=x1;dx+=8){
+    let sad=0;
+    for(let ty=0;ty<th;ty+=6){for(let tx=0;tx<ts;tx+=6){
+      const ri=((dy+ty)*pw+(dx+tx))*4,ti=(ty*ts+tx)*4;
+      sad+=Math.abs(rd[ri]-td[ti])+Math.abs(rd[ri+1]-td[ti+1])+Math.abs(rd[ri+2]-td[ti+2]);
+    }}
+    if(sad<bS){bS=sad;bX=dx;bY=dy}
+  }}
+
+  // Level 2: Medium search around coarse result, step=3, sample every 3rd pixel
+  let mX=bX,mY=bY,mS=Infinity;
+  const mr=16;
+  for(let dy=Math.max(0,bY-mr);dy<=Math.min(y1,bY+mr);dy+=3){
+    for(let dx=Math.max(0,bX-mr);dx<=Math.min(x1,bX+mr);dx+=3){
+      let sad=0;
+      for(let ty=0;ty<th;ty+=3){for(let tx=0;tx<ts;tx+=3){
+        const ri=((dy+ty)*pw+(dx+tx))*4,ti=(ty*ts+tx)*4;
+        sad+=Math.abs(rd[ri]-td[ti])+Math.abs(rd[ri+1]-td[ti+1])+Math.abs(rd[ri+2]-td[ti+2]);
+      }}
+      if(sad<mS){mS=sad;mX=dx;mY=dy}
+    }
+  }
+
+  // Level 3: Fine search, step=1, dense sampling
+  let fX=mX,fY=mY,fS=Infinity;
+  const fr=5;
+  for(let dy=Math.max(0,mY-fr);dy<=Math.min(y1,mY+fr);dy++){
+    for(let dx=Math.max(0,mX-fr);dx<=Math.min(x1,mX+fr);dx++){
+      let sad=0;
+      for(let ty=0;ty<th;ty+=2){for(let tx=0;tx<ts;tx+=2){
+        const ri=((dy+ty)*pw+(dx+tx))*4,ti=(ty*ts+tx)*4;
+        sad+=Math.abs(rd[ri]-td[ti])+Math.abs(rd[ri+1]-td[ti+1])+Math.abs(rd[ri+2]-td[ti+2]);
+      }}
+      if(sad<fS){fS=sad;fX=dx;fY=dy}
+    }
+  }
+
+  return{x:Math.round(fX+ts/2),y:Math.round(fY+th/2),score:fS};
+}
+
+async function startTracking(){
+  if(isTracking)return;
+  const toTrack=mosaics.filter(m=>{const v=m.panel==='before'?videoBefore:videoAfter;return !!v});
+  if(toTrack.length===0)return;
+  isTracking=true;$('btnStartTrack').disabled=true;$('trackProgress').style.display='block';
+  for(let ti=0;ti<toTrack.length;ti++){
+    $('trackProgressText').textContent=`跟踪 ${ti+1}/${toTrack.length}...`;
+    await trackOneMosaic(toTrack[ti],ti,toTrack.length);
+  }
+  isTracking=false;$('btnStartTrack').disabled=false;
+  $('trackProgressBar').style.width='100%';
+  $('trackProgressText').textContent=`完成! (${toTrack.length}个)`;
+  $('trackResultInfo').textContent=`✓ ${toTrack.length} 个马赛克已跟踪`;
+  renderMosaicList();draw();
+}
+
+async function trackOneMosaic(m,mIndex,mTotal){
+  const video=m.panel==='before'?videoBefore:videoAfter;
+  if(!video)return;
+  const dir=$('mTrackDir').value;
+  const dur=video.duration;
+  const step=1/12; // ~12 samples/sec
+  const pw=layout.panelW,ph=layout.panelH;
+  trackCanvas.width=pw;trackCanvas.height=ph;
+
+  const startTime=currentTime;
+  video.currentTime=startTime;await waitSeek(video);
+  drawImageCover(trackCtx,video,0,0,pw,ph);
+
+  const startCx=Math.round(m.x/100*pw),startCy=Math.round(m.y/100*ph);
+  const origTmpl=captureRegion(trackCtx,startCx,startCy,TMPL_SZ,pw,ph);
+
+  const trajectory=[{time:startTime,x:m.x,y:m.y}];
+
+  // Shared tracking loop
+  async function trackDirection(forward){
+    let cx=startCx,cy=startCy;
+    // Keep original template to blend with (prevents drift)
+    const origData=new Uint8ClampedArray(origTmpl.data.data);
+    let tmpl=captureRegion(trackCtx,cx,cy,TMPL_SZ,pw,ph);
+    let vx=0,vy=0; // velocity for motion prediction
+    const total=forward?(dur-startTime):startTime;
+    const tStart=forward?(startTime+step):startTime-step;
+    const tEnd=forward?dur:0;
+    const tStep=forward?step:-step;
+
+    for(let t=tStart;forward?(t<=tEnd):(t>=tEnd);t+=tStep){
+      video.currentTime=t;await waitSeek(video);
+      drawImageCover(trackCtx,video,0,0,pw,ph);
+
+      // Predict position using velocity
+      const predictX=Math.round(cx+vx),predictY=Math.round(cy+vy);
+      const res=matchInFrame(trackCtx,tmpl,predictX,predictY,pw,ph);
+
+      // Update velocity (smooth)
+      vx=vx*0.5+(res.x-cx)*0.5;
+      vy=vy*0.5+(res.y-cy)*0.5;
+      cx=res.x;cy=res.y;
+
+      if(forward)trajectory.push({time:t,x:cx/pw*100,y:cy/ph*100});
+      else trajectory.unshift({time:t,x:cx/pw*100,y:cy/ph*100});
+
+      // Template update: blend 80% original + 20% current (prevent drift)
+      const newTmpl=captureRegion(trackCtx,cx,cy,TMPL_SZ,pw,ph);
+      const nd=newTmpl.data.data,td2=tmpl.data.data;
+      for(let i=0;i<td2.length;i++)td2[i]=Math.round(origData[i]*0.7+nd[i]*0.3);
+
+      const elapsed=forward?(t-startTime):(startTime-t);
+      const pct=Math.round(elapsed/total*100);
+      const base=forward?0:(dir==='both'?50:0);
+      const scale=dir==='both'?0.5:1;
+      const overall=((mIndex+((base+pct*scale)/100))/mTotal*100).toFixed(0);
+      $('trackProgressBar').style.width=overall+'%';
+      $('trackProgressText').textContent=`${mIndex+1}/${mTotal} ${forward?'→':'←'} ${pct}%`;
+      await new Promise(r=>setTimeout(r,0));
+    }
+  }
+
+  if(dir==='forward'||dir==='both')await trackDirection(true);
+  if(dir==='backward'||dir==='both')await trackDirection(false);
+
+  // Sort & store
+  trajectory.sort((a,b)=>a.time-b.time);
+  m.trajectory=trajectory;
+  m.tracked=true;
+
+  // Restore video to current time
+  video.currentTime=startTime;await waitSeek(video);
+}
+
+// Get interpolated position from pre-computed trajectory
+// Add/update a manual keyframe at current time for the selected mosaic
+function addKeyframe(){
+  const m=mosaics.find(v=>v.id===selectedMosaicId);
+  if(!m)return;
+  if(!m.trajectory)m.trajectory=[];
+  // Remove existing keyframe at this time (±0.03s tolerance)
+  m.trajectory=m.trajectory.filter(k=>Math.abs(k.time-currentTime)>0.03);
+  // Insert new keyframe with current position
+  m.trajectory.push({time:currentTime,x:m.x,y:m.y});
+  m.trajectory.sort((a,b)=>a.time-b.time);
+  m.tracked=true;
+  $('trackResultInfo').textContent=`◆ ${m.trajectory.length} 个关键帧`;
+  renderTimeline();draw();
+}
+
+function getTrajectoryPos(m,time){
+  if(!m.trajectory||m.trajectory.length===0)return{x:m.x,y:m.y};
+  const tr=m.trajectory;
+  if(time<=tr[0].time)return{x:tr[0].x,y:tr[0].y};
+  if(time>=tr[tr.length-1].time)return{x:tr[tr.length-1].x,y:tr[tr.length-1].y};
+  // Binary search
+  let lo=0,hi=tr.length-1;
+  while(lo<hi-1){const mid=(lo+hi)>>1;if(tr[mid].time<=time)lo=mid;else hi=mid}
+  const t0=tr[lo],t1=tr[hi],f=(time-t0.time)/(t1.time-t0.time);
+  return{x:t0.x+(t1.x-t0.x)*f,y:t0.y+(t1.y-t0.y)*f};
+}
+
+// ========== PLAYBACK ==========
+let isPlaying=false,animId=null;
+
+function togglePlay(){if(isPlaying)stopPlay();else startPlay()}
+
+function startPlay(){
+  if(!hasVideo())return;isPlaying=true;$('btnPlay').textContent='⏸ 暂停';$('trackStatus').textContent='播放中...';
+  const vb=videoBefore,va=videoAfter;
+  if(vb){vb.currentTime=currentTime;vb.play()}if(va){va.currentTime=currentTime;va.play()}
+  (function loop(){
+    if(!isPlaying)return;
+    const t=Math.max(va?va.currentTime:0,vb?vb.currentTime:0);
+    currentTime=t;$('curTimeLabel').textContent=fmtTime(t);
+    drawFrame(vb,va);renderTimeline();
+    if((!vb||vb.ended)&&(!va||va.ended)){stopPlay();return}
+    animId=requestAnimationFrame(loop);
+  })();
+}
+
+function stopPlay(){
+  isPlaying=false;if(animId)cancelAnimationFrame(animId);
+  if(videoBefore)videoBefore.pause();if(videoAfter)videoAfter.pause();
+  $('btnPlay').textContent='▶ 播放';$('trackStatus').textContent='';draw();renderTimeline();
+}
+
+async function exportVideo(){
+  if(!hasVideo())return;$('btnExport').disabled=true;$('trackStatus').textContent='导出中...';
+  const stream=canvas.captureStream(30),chunks=[];
+  const rec=new MediaRecorder(stream,{mimeType:'video/webm; codecs=vp9'});
+  rec.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
+  const done=new Promise(r=>{rec.onstop=()=>{
+    const blob=new Blob(chunks,{type:'video/webm'});const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download=`cover-${W}x${H}.webm`;a.click();r();
+  }});
+  const vb=videoBefore,va=videoAfter;
+  if(vb){vb.currentTime=0;await new Promise(r=>vb.addEventListener('seeked',r,{once:true}))}
+  if(va){va.currentTime=0;await new Promise(r=>va.addEventListener('seeked',r,{once:true}))}
+  rec.start();if(vb)vb.play();if(va)va.play();
+  (function loop(){
+    if((!vb||vb.ended)&&(!va||va.ended)){rec.stop();$('btnExport').disabled=false;$('trackStatus').textContent='导出完成!';return}
+    const t=Math.max(va?va.currentTime:0,vb?vb.currentTime:0);currentTime=t;
+    drawFrame(vb,va);requestAnimationFrame(loop);
+  })();
+  await done;
+}
+
+// ========== TEXT BOXES ==========
+let textBoxes=[];
+let selectedTextId=null,nextTextId=1,textBoxBounds=[];
+
+function addTextBox(){const i=$('newTextInput'),t=i.value.trim();if(!t)return;textBoxes.push({id:nextTextId++,text:t,x:30+Math.random()*20,y:40+Math.random()*20,fontSize:22,fontFamily:'DM Sans',fontWeight:'700',color:'#ffffff'});i.value='';selectedTextId=textBoxes[textBoxes.length-1].id;renderTextBoxList();showTextProps();draw()}
+function renderTextBoxList(){$('textBoxList').innerHTML=textBoxes.map(tb=>`<div class="tb-item ${tb.id===selectedTextId?'active':''}" onclick="selectTextBox(${tb.id})"><span class="tb-text">${tb.text.length>18?tb.text.slice(0,18)+'…':tb.text}</span><span class="tb-del" onclick="event.stopPropagation();deleteTextBox(${tb.id})">×</span></div>`).join('')}
+function selectTextBox(id){selectedTextId=id;renderTextBoxList();showTextProps();draw()}
+function deleteTextBox(id){textBoxes=textBoxes.filter(t=>t.id!==id);if(selectedTextId===id)selectedTextId=null;renderTextBoxList();showTextProps();draw()}
+function showTextProps(){const p=$('textBoxProps'),tb=textBoxes.find(t=>t.id===selectedTextId);if(!tb){p.style.display='none';return}p.style.display='block';$('tbEditText').value=tb.text;$('tbFont').value=tb.fontFamily;$('tbWeight').value=tb.fontWeight;$('tbSize').value=tb.fontSize;$('vTbSize').textContent=tb.fontSize+'px';$('tbColor').value=tb.color}
+function updateTextProp(p,v){const tb=textBoxes.find(t=>t.id===selectedTextId);if(!tb)return;tb[p]=v;if(p==='text')renderTextBoxList();draw()}
+$('tbEditText').addEventListener('input',function(){updateTextProp('text',this.value)});
+$('tbFont').addEventListener('change',function(){updateTextProp('fontFamily',this.value)});
+$('tbWeight').addEventListener('change',function(){updateTextProp('fontWeight',this.value)});
+$('tbSize').addEventListener('input',function(){$('vTbSize').textContent=this.value+'px';updateTextProp('fontSize',parseInt(this.value))});
+$('tbColor').addEventListener('input',function(){updateTextProp('color',this.value)});
+
+// ========== MOUSE ==========
+let dragging=false,dragMode=null,dragMosaicId=null,dragTextId=null,dragOffset={x:0,y:0};
+
+function getCanvasPos(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
+
+function getMosaicPos(m){
+  if(m.tracked&&m.trajectory&&m.trajectory.length>0&&hasVideo()){
+    return getTrajectoryPos(m,currentTime);
+  }
+  return{x:m.x,y:m.y};
+}
+function hitMosaic(pos){
+  const L=layout;
+  for(let i=mosaics.length-1;i>=0;i--){
+    const m=mosaics[i];
+    const mp=getMosaicPos(m);
+    const px=m.panel==='before'?L.leftX:L.rightX,py=m.panel==='before'?L.leftY:L.rightY;
+    const cx=px+mp.x/100*L.panelW,cy=py+mp.y/100*L.panelH;
+    if(Math.sqrt((pos.x-cx)**2+(pos.y-cy)**2)<50)return m.id;
+  }
+  return null;
+}
+function hitText(pos){for(let i=textBoxBounds.length-1;i>=0;i--){const b=textBoxBounds[i];if(pos.x>=b.x&&pos.x<=b.x+b.w&&pos.y>=b.y&&pos.y<=b.y+b.h)return b.id}return null}
+
+canvas.addEventListener('mousedown',e=>{
+  if(isPlaying)return;const pos=getCanvasPos(e);
+  // Text first
+  const tId=hitText(pos);
+  if(tId!==null){dragging=true;dragMode='text';dragTextId=tId;selectedTextId=tId;selectedMosaicId=null;
+    const tb=textBoxes.find(t=>t.id===tId);dragOffset.x=pos.x-tb.x/100*W;dragOffset.y=pos.y-tb.y/100*H;
+    renderTextBoxList();showTextProps();renderMosaicList();showMosaicProps();draw();e.preventDefault();return}
+  // Mosaic
+  const mId=hitMosaic(pos);
+  if(mId!==null){
+    dragging=true;dragMode='mosaic';dragMosaicId=mId;selectedMosaicId=mId;selectedTextId=null;
+    // Sync position from trajectory so drag starts at visual position
+    const mm=mosaics.find(v=>v.id===mId);
+    if(mm){const mp=getMosaicPos(mm);mm.x=mp.x;mm.y=mp.y}
+    renderMosaicList();showMosaicProps();renderTextBoxList();showTextProps();draw();e.preventDefault();return}
+  // Panel drag for layout snap
+  const L=layout;
+  const inB=pos.x>=L.leftX&&pos.x<=L.leftX+L.panelW&&pos.y>=L.leftY&&pos.y<=L.leftY+L.panelH;
+  const inA=pos.x>=L.rightX&&pos.x<=L.rightX+(L.panelW2||L.panelW)&&pos.y>=L.rightY&&pos.y<=L.rightY+(L.panelH2||L.panelH);
+  if(inB||inA){panelDrag={which:inB?'before':'after'};e.preventDefault();return}
+  // Deselect
+  selectedTextId=null;selectedMosaicId=null;
+  renderTextBoxList();showTextProps();renderMosaicList();showMosaicProps();draw();
+});
+
+window.addEventListener('mousemove',e=>{
+  // Panel drag snap
+  if(panelDrag){
+    const pos=getCanvasPos(e);
+    const px=pos.x/W,py=pos.y/H;
+    // Determine snap zone based on mouse position
+    if(px<.35&&py<.35)snapZone='tl';
+    else if(px>.65&&py>.65)snapZone='br';
+    else if(px<.35&&py>.65)snapZone='bl';
+    else if(px>.65&&py<.35)snapZone='tr';
+    else if(py<.3)snapZone='top';
+    else if(py>.7)snapZone='bottom';
+    else if(px<.3)snapZone='left';
+    else if(px>.7)snapZone='right';
+    else snapZone=null;
+    drawSnapPreview();
+    e.preventDefault();return;
+  }
+  if(!dragging)return;const pos=getCanvasPos(e);
+  if(dragMode==='text'){const tb=textBoxes.find(t=>t.id===dragTextId);if(tb){tb.x=Math.max(0,Math.min(95,((pos.x-dragOffset.x)/W)*100));tb.y=Math.max(2,Math.min(98,((pos.y-dragOffset.y)/H)*100));draw()}}
+  else if(dragMode==='mosaic'){
+    const m=mosaics.find(v=>v.id===dragMosaicId);if(!m)return;
+    const L=layout,px=m.panel==='before'?L.leftX:L.rightX,py=m.panel==='before'?L.leftY:L.rightY;
+    m.x=Math.max(0,Math.min(100,((pos.x-px)/L.panelW)*100));
+    m.y=Math.max(5,Math.min(95,((pos.y-py)/L.panelH)*100));
+    // Auto add keyframe when dragging with video
+    if(hasVideo()){
+      if(!m.trajectory)m.trajectory=[];
+      m.trajectory=m.trajectory.filter(k=>Math.abs(k.time-currentTime)>0.03);
+      m.trajectory.push({time:currentTime,x:m.x,y:m.y});
+      m.trajectory.sort((a,b)=>a.time-b.time);
+      m.tracked=true;
+    }
+    draw();
+  }
+  e.preventDefault();
+});
+window.addEventListener('mouseup',()=>{
+  // Panel drag snap apply
+  if(panelDrag&&snapZone){
+    applySnap(panelDrag.which,snapZone);
+    panelDrag=null;snapZone=null;draw();
+  } else if(panelDrag){panelDrag=null;snapZone=null;draw()}
+  if(dragging&&dragMode==='mosaic'&&hasVideo()){
+    const m=mosaics.find(v=>v.id===dragMosaicId);
+    renderTimeline();showMosaicProps();
+    // Auto-track from the manually set position
+    if(m&&!isTracking)autoTrackFrom(m);
+  }
+  dragging=false;dragMode=null;
+});
+
+async function autoTrackFrom(m){
+  isTracking=true;
+  $('btnStartTrack').disabled=true;
+  $('trackProgress').style.display='block';
+  $('trackProgressText').textContent='自动跟踪中...';
+  await trackOneMosaic(m,0,1);
+  isTracking=false;
+  $('btnStartTrack').disabled=false;
+  $('trackProgressBar').style.width='100%';
+  $('trackProgressText').textContent='自动跟踪完成!';
+  $('trackResultInfo').textContent=`◆ ${m.trajectory.length} 个关键帧`;
+  renderMosaicList();renderTimeline();draw();
+}
+
+// Spacebar to play/pause
+document.addEventListener('keydown',e=>{
+  if(e.target.matches('input,select,textarea'))return;
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  if((e.code==='Backspace'||e.code==='Delete')){
+    e.preventDefault();
+    if(selectedTextId){deleteTextBox(selectedTextId)}
+    else if(selectedMosaicId){deleteMosaic(selectedMosaicId)}
+  }
+});
+
+canvas.style.cursor='crosshair';
+
+// ========== DRAW ==========
+function drawFrame(vb,va){drawCore(vb||imgBefore,va||imgAfter)}
+function draw(){drawCore(imgBefore,imgAfter)}
+
+function drawCore(srcB,srcA){
+  const bgStyle=$('bgStyle').value;ctx.clearRect(0,0,W,H);
+  const bg=ctx.createLinearGradient(0,0,W,H);
+  if(bgStyle==='light'){bg.addColorStop(0,'#faf9fe');bg.addColorStop(.4,'#f3f0fb');bg.addColorStop(.7,'#eee9f7');bg.addColorStop(1,'#f7f5fc')}
+  else if(bgStyle==='dark'){bg.addColorStop(0,'#13111c');bg.addColorStop(.5,'#1a1726');bg.addColorStop(1,'#0f0e18')}
+  else{bg.addColorStop(0,'#1e1535');bg.addColorStop(.5,'#2a1a42');bg.addColorStop(1,'#1a1230')}
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  const ra=ctx.createRadialGradient(W*.2,H*.8,0,W*.2,H*.8,400);
+  ra.addColorStop(0,bgStyle==='light'?'rgba(168,130,255,.06)':'rgba(168,130,255,.08)');ra.addColorStop(1,'transparent');
+  ctx.fillStyle=ra;ctx.fillRect(0,0,W,H);
+  const isLight=bgStyle==='light';
+  const pBg=isLight?'#e8e4f0':'#1e1a2e',pBg2=isLight?'#f0e4ec':'#2a1e30';
+  const pm=Math.round(W*.03),gap=Math.round(Math.min(W,H)*.015);
+  const pr=Math.round(Math.min(W,H)*.015);
+  let pW,pH,lX,lY,rX,rY,divV,pW2,pH2;
+  if(layoutMode==='tb'){
+    // Top-bottom
+    divV=false;pW=W-pm*2;pH=(H-pm*2-gap)/2;pW2=pW;pH2=pH;
+    lX=pm;lY=pm;rX=pm;rY=pm+pH+gap;
+  } else if(layoutMode==='diag'){
+    // Diagonal: Before top-left, After bottom-right
+    const dw=Math.round(W*.52),dh=Math.round(H*.52);
+    pW=dw;pH=dh;pW2=dw;pH2=dh;divV=false;
+    lX=pm;lY=pm;rX=W-pm-dw;rY=H-pm-dh;
+  } else {
+    // Left-right (default)
+    divV=true;pW=(W-pm*2-gap)/2;pH=H-pm*2;pW2=pW;pH2=pH;
+    lX=pm;lY=pm;rX=pm+pW+gap;rY=pm;
+  }
+  layout={leftX:lX,leftY:lY,rightX:rX,rightY:rY,panelW:pW,panelH:pH,panelW2:pW2||pW,panelH2:pH2||pH};
+
+  // Before
+  ctx.save();roundRect(ctx,lX,lY,pW,pH,pr);ctx.clip();
+  if(srcB)drawImageCover(ctx,srcB,lX,lY,pW,pH);
+  else{const g=ctx.createLinearGradient(lX,lY,lX,lY+pH);g.addColorStop(0,pBg);g.addColorStop(1,isLight?'#d5cfe5':'#16132a');ctx.fillStyle=g;ctx.fillRect(lX,lY,pW,pH);ctx.fillStyle=isLight?'rgba(100,80,140,.25)':'rgba(200,180,255,.15)';ctx.font=`500 ${Math.round(Math.min(W,H)*.016)}px "DM Sans"`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('上传原图 Before',lX+pW/2,lY+pH/2)}
+  getActiveMosaics('before',currentTime).forEach(m=>drawGlow(lX,lY,pW,pH,m));
+  ctx.restore();
+
+  // After
+  ctx.save();roundRect(ctx,rX,rY,pW,pH,pr);ctx.clip();
+  if(srcA)drawImageCover(ctx,srcA,rX,rY,pW,pH);
+  else{const g=ctx.createLinearGradient(rX,rY,rX,rY+pH);g.addColorStop(0,pBg2);g.addColorStop(1,isLight?'#e5cfd8':'#1e1228');ctx.fillStyle=g;ctx.fillRect(rX,rY,pW,pH);ctx.fillStyle=isLight?'rgba(100,80,140,.25)':'rgba(200,180,255,.15)';ctx.font=`500 ${Math.round(Math.min(W,H)*.016)}px "DM Sans"`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('上传效果图 After',rX+pW/2,rY+pH/2)}
+  getActiveMosaics('after',currentTime).forEach(m=>drawGlow(rX,rY,pW,pH,m));
+  ctx.restore();
+
+  // Divider (skip for diagonal)
+  const cR=Math.round(Math.min(W,H)*.022);
+  if(layoutMode==='diag'){/* no divider */}
+  else if(divV){const dX=lX+pW+gap/2;const lg=ctx.createLinearGradient(dX,lY,dX,lY+pH);lg.addColorStop(0,'transparent');lg.addColorStop(.15,'rgba(255,255,255,.8)');lg.addColorStop(.5,'rgba(255,255,255,1)');lg.addColorStop(.85,'rgba(255,255,255,.8)');lg.addColorStop(1,'transparent');ctx.strokeStyle=lg;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(dX,lY);ctx.lineTo(dX,lY+pH);ctx.stroke();const cx=dX,cy=lY+pH/2;ctx.beginPath();ctx.arc(cx,cy,cR,0,Math.PI*2);ctx.fillStyle='white';ctx.shadowColor='rgba(139,92,246,.3)';ctx.shadowBlur=15;ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle='#8b5cf6';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(cx-7,cy);ctx.lineTo(cx+7,cy);ctx.moveTo(cx+2,cy-5);ctx.lineTo(cx+7,cy);ctx.lineTo(cx+2,cy+5);ctx.stroke();ctx.lineCap='butt'}
+  else{const dY=lY+pH+gap/2;const lg=ctx.createLinearGradient(lX,dY,lX+pW,dY);lg.addColorStop(0,'transparent');lg.addColorStop(.15,'rgba(255,255,255,.8)');lg.addColorStop(.5,'rgba(255,255,255,1)');lg.addColorStop(.85,'rgba(255,255,255,.8)');lg.addColorStop(1,'transparent');ctx.strokeStyle=lg;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(lX,dY);ctx.lineTo(lX+pW,dY);ctx.stroke();const cx=lX+pW/2,cy=dY;ctx.beginPath();ctx.arc(cx,cy,cR,0,Math.PI*2);ctx.fillStyle='white';ctx.shadowColor='rgba(139,92,246,.3)';ctx.shadowBlur=15;ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle='#8b5cf6';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(cx,cy-7);ctx.lineTo(cx,cy+7);ctx.moveTo(cx-5,cy+2);ctx.lineTo(cx,cy+7);ctx.lineTo(cx+5,cy+2);ctx.stroke();ctx.lineCap='butt'}
+
+  // Labels
+  const lFs=Math.round(Math.min(W,H)*.013);
+  function drawLbl(t,x,y,af){ctx.font=`700 ${lFs}px "JetBrains Mono",monospace`;const tw=ctx.measureText(t).width,pw=tw+24,ph=lFs+16;roundRect(ctx,x,y,pw,ph,ph/2);ctx.fillStyle=af?(isLight?'rgba(139,92,246,.12)':'rgba(139,92,246,.2)'):(isLight?'rgba(255,255,255,.8)':'rgba(255,255,255,.1)');ctx.fill();ctx.fillStyle=af?'#7c3aed':(isLight?'#5b5278':'#c4b5fd');ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,x+pw/2,y+ph/2)}
+  drawLbl('ORIGINAL',lX+16,lY+16,false);drawLbl('AI RESULT',rX+pW-120,rY+16,true);
+
+  if($('showVideoBadge').checked){const vFs=Math.round(Math.min(W,H)*.011),vt='VIDEO OUTPUT';ctx.font=`700 ${vFs}px "JetBrains Mono",monospace`;const vw=ctx.measureText(vt).width+30,vx=rX+pW-vw-16,vy=rY+pH-36;roundRect(ctx,vx,vy,vw,26,8);ctx.fillStyle=isLight?'rgba(139,92,246,.1)':'rgba(139,92,246,.2)';ctx.fill();ctx.beginPath();ctx.arc(vx+12,vy+13,4,0,Math.PI*2);ctx.fillStyle='#ef4444';ctx.fill();ctx.fillStyle='#7c3aed';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(vt,vx+22,vy+13)}
+
+  ctx.strokeStyle=isLight?'rgba(196,181,253,.4)':'rgba(196,181,253,.15)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(W-24,16);ctx.lineTo(W-60,16);ctx.moveTo(W-24,16);ctx.lineTo(W-24,52);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(24,H-16);ctx.lineTo(60,H-16);ctx.moveTo(24,H-16);ctx.lineTo(24,H-52);ctx.stroke();
+
+  // Text
+  textBoxBounds=[];
+  textBoxes.forEach(tb=>{const px=tb.x/100*W,py=tb.y/100*H;ctx.font=`${tb.fontWeight} ${tb.fontSize}px "${tb.fontFamily}",sans-serif`;ctx.textAlign='left';ctx.textBaseline='top';const tw=ctx.measureText(tb.text).width,th=tb.fontSize*1.3;textBoxBounds.push({id:tb.id,x:px,y:py,w:tw,h:th});ctx.fillStyle=tb.color;ctx.fillText(tb.text,px,py);if(tb.id===selectedTextId&&!isPlaying){ctx.save();ctx.strokeStyle='rgba(167,139,250,.8)';ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.strokeRect(px-4,py-4,tw+8,th+8);ctx.setLineDash([]);ctx.restore()}});
+
+  // Selected mosaic highlight + trajectory visualization
+  if(selectedMosaicId&&!isPlaying){
+    const m=mosaics.find(v=>v.id===selectedMosaicId);
+    if(m){
+      const L=layout,bpx=m.panel==='before'?L.leftX:L.rightX,bpy=m.panel==='before'?L.leftY:L.rightY;
+      let cx=bpx+m.x/100*L.panelW,cy=bpy+m.y/100*L.panelH;
+      if(m.tracked&&m.trajectory&&hasVideo()){
+        const tp=getTrajectoryPos(m,currentTime);cx=bpx+tp.x/100*L.panelW;cy=bpy+tp.y/100*L.panelH;
+      }
+      ctx.save();ctx.strokeStyle='rgba(167,139,250,.9)';ctx.lineWidth=2;ctx.setLineDash([6,4]);
+      ctx.beginPath();ctx.arc(cx,cy,20,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+
+      // Draw trajectory path if enabled
+      if(m.tracked&&m.trajectory&&$('mShowTraj')&&$('mShowTraj').checked){
+        ctx.save();
+        ctx.strokeStyle='rgba(6,182,212,.6)';ctx.lineWidth=2;ctx.setLineDash([3,3]);
+        ctx.beginPath();
+        m.trajectory.forEach((pt,i)=>{
+          const tx=bpx+pt.x/100*L.panelW,ty=bpy+pt.y/100*L.panelH;
+          if(i===0)ctx.moveTo(tx,ty);else ctx.lineTo(tx,ty);
+        });
+        ctx.stroke();ctx.setLineDash([]);
+        // Draw dots at intervals
+        ctx.fillStyle='rgba(6,182,212,.8)';
+        m.trajectory.forEach((pt,i)=>{
+          if(i%10===0){const tx=bpx+pt.x/100*L.panelW,ty=bpy+pt.y/100*L.panelH;
+          ctx.beginPath();ctx.arc(tx,ty,3,0,Math.PI*2);ctx.fill()}
+        });
+        ctx.restore();
+      }
+    }
+  }
+}
+
+function exportCover(){const p=selectedTextId,m=selectedMosaicId;selectedTextId=null;selectedMosaicId=null;draw();const r=$('aspectRatio').value.replace(':','x');const a=document.createElement('a');a.download=`cover-${W}x${H}-${r}.png`;a.href=canvas.toDataURL('image/png',1.0);a.click();selectedTextId=p;selectedMosaicId=m;draw()}
+
+// Layout mode + panel drag-snap
+let layoutMode='lr';
+let panelDrag=null; // {which:'before'|'after'}
+let snapZone=null;
+
+function drawSnapPreview(){
+  draw(); // redraw base
+  if(!snapZone)return;
+  const pm=Math.round(W*.03),gap=Math.round(Math.min(W,H)*.015);
+  ctx.save();
+  ctx.fillStyle='rgba(167,139,250,.12)';
+  ctx.strokeStyle='rgba(167,139,250,.5)';
+  ctx.lineWidth=2;ctx.setLineDash([8,4]);
+  let x,y,w,h;
+  if(snapZone==='left'){x=pm;y=pm;w=(W-pm*2-gap)/2;h=H-pm*2}
+  else if(snapZone==='right'){w=(W-pm*2-gap)/2;x=W-pm-w;y=pm;h=H-pm*2}
+  else if(snapZone==='top'){x=pm;y=pm;w=W-pm*2;h=(H-pm*2-gap)/2}
+  else if(snapZone==='bottom'){h=(H-pm*2-gap)/2;x=pm;y=H-pm-h;w=W-pm*2}
+  else if(snapZone==='tl'){w=Math.round(W*.52);h=Math.round(H*.52);x=pm;y=pm}
+  else if(snapZone==='br'){w=Math.round(W*.52);h=Math.round(H*.52);x=W-pm-w;y=H-pm-h}
+  else if(snapZone==='tr'){w=Math.round(W*.52);h=Math.round(H*.52);x=W-pm-w;y=pm}
+  else if(snapZone==='bl'){w=Math.round(W*.52);h=Math.round(H*.52);x=pm;y=H-pm-h}
+  if(x!=null){roundRect(ctx,x,y,w,h,8);ctx.fill();ctx.stroke()}
+  ctx.setLineDash([]);ctx.restore();
+}
+
+function applySnap(which,zone){
+  // which = 'before'|'after', zone = where it was dragged
+  // Determine layout based on drop zone
+  if(zone==='left'||zone==='right'){
+    layoutMode='lr';
+    // If dragging After to left, or Before to right, swap isn't needed for draw
+    // The draw function always puts Before=left, After=right in 'lr'
+    // For simplicity, just set lr layout
+  } else if(zone==='top'||zone==='bottom'){
+    layoutMode='tb';
+  } else {
+    layoutMode='diag';
+  }
+}
+
+// Theme toggle
+function toggleTheme(){
+  const html=document.documentElement;
+  const isDark=html.getAttribute('data-theme')!=='light';
+  html.setAttribute('data-theme',isDark?'light':'dark');
+  $('themeBtn').textContent=isDark?'☀️':'🌙';
+  localStorage.setItem('theme',isDark?'light':'dark');
+}
+// Restore saved theme
+(function(){
+  const saved=localStorage.getItem('theme');
+  if(saved){document.documentElement.setAttribute('data-theme',saved);$('themeBtn').textContent=saved==='light'?'☀️':'🌙'}
+})();
+
+// Tab switching
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const tabs=['upload','mosaic','text','style'];
+    t.classList.toggle('active',tabs[i]===name);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  const pane=$('pane-'+name);if(pane)pane.classList.add('active');
+}
+
+// Init
+renderMosaicList();showMosaicProps();renderTextBoxList();changeRatio();
+window.addEventListener('resize',changeRatio);
+</script>
+</body>
+</html>
