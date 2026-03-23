@@ -215,7 +215,7 @@
       <div class="tab-pane" id="pane-style">
         <div class="pane-inner">
           <div class="control-group"><div class="control-label"><span>背景样式</span></div>
-            <select class="text-input" id="bgStyle"><option value="light">浅色简洁</option><option value="dark">深色科技</option><option value="gradient">渐变梦幻</option></select>
+            <select class="text-input" id="bgStyle"><option value="light">浅色简洁</option><option value="dark">深色科技</option><option value="gradient">渐变梦幻</option><option value="nsfw-luxe">暗奢剪影</option><option value="nsfw-cyber">霓虹赛博</option><option value="nsfw-elegant">极简优雅</option></select>
           </div>
           <div class="checkbox-row"><input type="checkbox" id="showVideoBadge" checked><label for="showVideoBadge">显示 Video Output 标签</label></div>
         </div>
@@ -891,16 +891,75 @@ canvas.style.cursor='crosshair';
 function drawFrame(vb,va){drawCore(vb||imgBefore,va||imgAfter)}
 function draw(){drawCore(imgBefore,imgAfter)}
 
+function drawStyleDecor(style){
+  if(style==='nsfw-luxe'){
+    // Pink/purple radial glows
+    const g1=ctx.createRadialGradient(W*.5,H*.6,0,W*.5,H*.6,H*.5);
+    g1.addColorStop(0,'rgba(200,50,130,0.14)');g1.addColorStop(0.7,'transparent');
+    ctx.fillStyle=g1;ctx.fillRect(0,0,W,H);
+    const g2=ctx.createRadialGradient(W*.25,H*.15,0,W*.25,H*.15,W*.3);
+    g2.addColorStop(0,'rgba(120,40,220,0.08)');g2.addColorStop(0.5,'transparent');
+    ctx.fillStyle=g2;ctx.fillRect(0,0,W,H);
+    // Silhouette glow at bottom
+    const sg=ctx.createRadialGradient(W*.5,H*1.05,0,W*.5,H*1.05,H*.55);
+    sg.addColorStop(0,'rgba(200,60,140,0.18)');sg.addColorStop(0.5,'rgba(120,20,80,0.08)');sg.addColorStop(1,'transparent');
+    ctx.fillStyle=sg;ctx.fillRect(0,0,W,H);
+    // Stars
+    const stars=[[.18,.25,.35],[.82,.18,.25],[.55,.72,.15],[.38,.88,.2],[.12,.55,.12],[.88,.48,.18],[.65,.35,.2],[.08,.42,.15],[.92,.72,.12],[.45,.12,.18],[.75,.82,.15],[.22,.68,.2],[.5,.08,.25],[.95,.35,.12],[.3,.95,.18]];
+    stars.forEach(([sx,sy,op])=>{ctx.beginPath();ctx.arc(W*sx,H*sy,1.2,0,Math.PI*2);ctx.fillStyle=`rgba(255,220,255,${op})`;ctx.fill()});
+  }
+  else if(style==='nsfw-cyber'){
+    // Grid lines
+    ctx.save();
+    for(let y=0;y<H;y+=38){ctx.strokeStyle='rgba(255,0,80,0.025)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+    for(let x=0;x<W;x+=38){ctx.strokeStyle='rgba(0,200,255,0.018)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+    // Bottom fade
+    const grd=ctx.createLinearGradient(0,0,0,H);grd.addColorStop(0,'transparent');grd.addColorStop(1,'rgba(0,0,0,0.5)');
+    ctx.fillStyle=grd;ctx.fillRect(0,0,W,H);
+    ctx.restore();
+    // Neon rings
+    ctx.save();
+    const cx=W*.5,cy=H*.46,r1=Math.min(W,H)*.12;
+    ctx.strokeStyle='rgba(255,0,100,0.3)';ctx.lineWidth=1.5;ctx.shadowColor='rgba(255,0,100,0.15)';ctx.shadowBlur=28;
+    ctx.beginPath();ctx.arc(cx,cy,r1,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle='rgba(0,200,255,0.2)';ctx.shadowColor='rgba(0,200,255,0.08)';ctx.shadowBlur=18;
+    ctx.beginPath();ctx.arc(cx,cy,r1-14,0,Math.PI*2);ctx.stroke();
+    ctx.shadowBlur=0;ctx.restore();
+    // Corner brackets
+    ctx.save();const cs=26,cp=18;ctx.strokeStyle='rgba(255,0,100,0.25)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(cp,cp+cs);ctx.lineTo(cp,cp);ctx.lineTo(cp+cs,cp);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(W-cp-cs,cp);ctx.lineTo(W-cp,cp);ctx.lineTo(W-cp,cp+cs);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cp,H-cp-cs);ctx.lineTo(cp,H-cp);ctx.lineTo(cp+cs,H-cp);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(W-cp-cs,H-cp);ctx.lineTo(W-cp,H-cp);ctx.lineTo(W-cp,H-cp-cs);ctx.stroke();
+    ctx.restore();
+  }
+  else if(style==='nsfw-elegant'){
+    // Warm glow at bottom
+    const g1=ctx.createRadialGradient(W*.5,H*.75,0,W*.5,H*.75,W*.45);
+    g1.addColorStop(0,'rgba(210,100,150,0.07)');g1.addColorStop(0.7,'transparent');
+    ctx.fillStyle=g1;ctx.fillRect(0,0,W,H);
+    // Blob at center
+    const bg2=ctx.createRadialGradient(W*.5,H*.45,0,W*.5,H*.45,Math.min(W,H)*.2);
+    bg2.addColorStop(0,'rgba(220,80,140,0.1)');bg2.addColorStop(0.5,'rgba(160,60,200,0.05)');bg2.addColorStop(1,'transparent');
+    ctx.fillStyle=bg2;ctx.fillRect(0,0,W,H);
+  }
+}
+
 function drawCore(srcB,srcA){
   const bgStyle=$('bgStyle').value;ctx.clearRect(0,0,W,H);
   const bg=ctx.createLinearGradient(0,0,W,H);
   if(bgStyle==='light'){bg.addColorStop(0,'#faf9fe');bg.addColorStop(.4,'#f3f0fb');bg.addColorStop(.7,'#eee9f7');bg.addColorStop(1,'#f7f5fc')}
   else if(bgStyle==='dark'){bg.addColorStop(0,'#13111c');bg.addColorStop(.5,'#1a1726');bg.addColorStop(1,'#0f0e18')}
+  else if(bgStyle==='gradient'){bg.addColorStop(0,'#1e1535');bg.addColorStop(.5,'#2a1a42');bg.addColorStop(1,'#1a1230')}
+  else if(bgStyle==='nsfw-luxe'){bg.addColorStop(0,'#1a0a2e');bg.addColorStop(.4,'#0d0d1a');bg.addColorStop(1,'#1a0520')}
+  else if(bgStyle==='nsfw-cyber'){bg.addColorStop(0,'#08080e');bg.addColorStop(1,'#0a0a12')}
+  else if(bgStyle==='nsfw-elegant'){bg.addColorStop(0,'#100f16');bg.addColorStop(.5,'#1a1420');bg.addColorStop(1,'#100a18')}
   else{bg.addColorStop(0,'#1e1535');bg.addColorStop(.5,'#2a1a42');bg.addColorStop(1,'#1a1230')}
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
   const ra=ctx.createRadialGradient(W*.2,H*.8,0,W*.2,H*.8,400);
   ra.addColorStop(0,bgStyle==='light'?'rgba(168,130,255,.06)':'rgba(168,130,255,.08)');ra.addColorStop(1,'transparent');
   ctx.fillStyle=ra;ctx.fillRect(0,0,W,H);
+  drawStyleDecor(bgStyle);
   const isLight=bgStyle==='light';
   const pBg=isLight?'#e8e4f0':'#1e1a2e',pBg2=isLight?'#f0e4ec':'#2a1e30';
   const pm=Math.round(W*.03),gap=Math.round(Math.min(W,H)*.015);
