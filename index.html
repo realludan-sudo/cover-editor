@@ -215,9 +215,14 @@
       <div class="tab-pane" id="pane-style">
         <div class="pane-inner">
           <div class="control-group"><div class="control-label"><span>背景样式</span></div>
-            <select class="text-input" id="bgStyle"><option value="light">浅色简洁</option><option value="dark">深色科技</option><option value="gradient">渐变梦幻</option><option value="nsfw-luxe">暗奢剪影</option><option value="nsfw-cyber">霓虹赛博</option><option value="nsfw-elegant">极简优雅</option></select>
+            <select class="text-input" id="bgStyle"><option value="light">浅色简洁</option><option value="dark">深色科技</option><option value="gradient">渐变梦幻</option><option value="single">单图封面</option><option value="nsfw-luxe">暗奢剪影</option><option value="nsfw-cyber">霓虹赛博</option><option value="nsfw-elegant">极简优雅</option></select>
           </div>
           <div class="checkbox-row"><input type="checkbox" id="showVideoBadge" checked><label for="showVideoBadge">显示 Video Output 标签</label></div>
+          <div id="coverImageControls" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+            <div class="control-group"><div class="control-label"><span>缩放</span><span class="value" id="vCoverScale">1.0x</span></div><input type="range" id="coverScaleSlider" min="100" max="300" value="100" step="5"></div>
+            <div style="font-size:11px;color:var(--text2);margin-top:6px">上传后拖拽画布调整位置</div>
+            <button class="btn-small" style="width:100%;margin-top:8px;" onclick="resetCoverPos()">重置位置和缩放</button>
+          </div>
         </div>
       </div>
     </div>
@@ -246,6 +251,8 @@ function changeRatio(){
 
 // ========== MEDIA ==========
 let imgBefore=null,imgAfter=null,videoBefore=null,videoAfter=null;
+let coverScale=1,coverOffsetX=0,coverOffsetY=0;
+function isSingleImageMode(){const v=$('bgStyle').value;return v.startsWith('nsfw-')||v==='single'}
 let currentTime=0;
 
 function getVideoDuration(){
@@ -285,6 +292,7 @@ function handleUpload(which,file){
     const img=new Image();img.onload=()=>{
       if(which==='Before'){imgBefore=img;videoBefore=null;$('uploadBefore').classList.add('has-image')}
       else{imgAfter=img;videoAfter=null;$('uploadAfter').classList.add('has-image')}
+      if(isSingleImageMode()){coverScale=1;coverOffsetX=0;coverOffsetY=0;$('coverScaleSlider').value=100;$('vCoverScale').textContent='1.0x'}
       draw();
     };img.src=URL.createObjectURL(file);
   }
@@ -313,11 +321,21 @@ function seekToTime(t){
   }
 }
 
-document.querySelectorAll('#bgStyle,#showVideoBadge').forEach(el=>{el.addEventListener('input',draw);el.addEventListener('change',draw)});
+$('bgStyle').addEventListener('change',()=>{
+  const show=isSingleImageMode();
+  $('coverImageControls').style.display=show?'block':'none';
+  draw();
+});
+$('showVideoBadge').addEventListener('change',draw);
+$('coverScaleSlider').addEventListener('input',function(){
+  coverScale=parseInt(this.value)/100;
+  $('vCoverScale').textContent=coverScale.toFixed(1)+'x';draw();
+});
+function resetCoverPos(){coverScale=1;coverOffsetX=0;coverOffsetY=0;$('coverScaleSlider').value=100;$('vCoverScale').textContent='1.0x';draw()}
 
 function hexToRgba(hex,a){return `rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${a})`}
 function getSourceSize(s){return s instanceof HTMLVideoElement?{width:s.videoWidth,height:s.videoHeight}:{width:s.width,height:s.height}}
-function drawImageCover(ctx,src,x,y,w,h){const d=getSourceSize(src),ar=d.width/d.height,tr=w/h;let sx,sy,sw,sh;if(ar>tr){sh=d.height;sw=sh*tr;sx=(d.width-sw)/2;sy=0}else{sw=d.width;sh=sw/tr;sx=0;sy=(d.height-sh)/2}ctx.drawImage(src,sx,sy,sw,sh,x,y,w,h)}
+function drawImageCover(ctx,src,x,y,w,h,scale,offX,offY){const d=getSourceSize(src),ar=d.width/d.height,tr=w/h;let sx,sy,sw,sh;if(ar>tr){sh=d.height;sw=sh*tr;sx=(d.width-sw)/2;sy=0}else{sw=d.width;sh=sw/tr;sx=0;sy=(d.height-sh)/2}if(scale&&scale>1){const nw=sw/scale,nh=sh/scale;sx+=(sw-nw)/2;sy+=(sh-nh)/2;sw=nw;sh=nh}if(offX)sx+=offX;if(offY)sy+=offY;sx=Math.max(0,Math.min(d.width-sw,sx));sy=Math.max(0,Math.min(d.height-sh,sy));ctx.drawImage(src,sx,sy,sw,sh,x,y,w,h)}
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
 
 // ========== MOSAICS ==========
@@ -802,13 +820,25 @@ canvas.addEventListener('mousedown',e=>{
   const L=layout;
   const inB=pos.x>=L.leftX&&pos.x<=L.leftX+L.panelW&&pos.y>=L.leftY&&pos.y<=L.leftY+L.panelH;
   const inA=pos.x>=L.rightX&&pos.x<=L.rightX+(L.panelW2||L.panelW)&&pos.y>=L.rightY&&pos.y<=L.rightY+(L.panelH2||L.panelH);
-  // NSFW cover mode: click canvas → upload single image
-  const isNsfwMode=$('bgStyle').value.startsWith('nsfw-');
-  if(isNsfwMode&&inB&&!imgBefore&&!videoBefore){$('fileBefore').click();e.preventDefault();return}
+  const isSingle=isSingleImageMode();
+  // Single/NSFW cover mode
+  if(isSingle){
+    if(!imgBefore&&!imgAfter&&!videoBefore&&!videoAfter){$('fileBefore').click();e.preventDefault();return}
+    // Drag to pan image
+    if((imgBefore||imgAfter)&&coverScale>1){
+      dragging=true;dragMode='coverPan';
+      dragOffset.x=pos.x;dragOffset.y=pos.y;dragOffset.startOX=coverOffsetX;dragOffset.startOY=coverOffsetY;
+      canvas.style.cursor='grabbing';e.preventDefault();return;
+    }
+    // Deselect
+    selectedTextId=null;selectedMosaicId=null;
+    renderTextBoxList();showTextProps();renderMosaicList();showMosaicProps();draw();
+    return;
+  }
   // Normal mode: click empty panel → upload
-  if(!isNsfwMode&&inB&&!imgBefore&&!videoBefore){$('fileBefore').click();e.preventDefault();return}
-  if(!isNsfwMode&&inA&&!imgAfter&&!videoAfter){$('fileAfter').click();e.preventDefault();return}
-  if(!isNsfwMode&&(inB||inA)){panelDrag={which:inB?'before':'after'};e.preventDefault();return}
+  if(inB&&!imgBefore&&!videoBefore){$('fileBefore').click();e.preventDefault();return}
+  if(inA&&!imgAfter&&!videoAfter){$('fileAfter').click();e.preventDefault();return}
+  if(inB||inA){panelDrag={which:inB?'before':'after'};e.preventDefault();return}
   // Deselect
   selectedTextId=null;selectedMosaicId=null;
   renderTextBoxList();showTextProps();renderMosaicList();showMosaicProps();draw();
@@ -833,6 +863,19 @@ window.addEventListener('mousemove',e=>{
     e.preventDefault();return;
   }
   if(!dragging)return;const pos=getCanvasPos(e);
+  if(dragMode==='coverPan'){
+    const coverImg=imgBefore||imgAfter;
+    if(coverImg){
+      const d=getSourceSize(coverImg),pm=Math.round(W*.06),iw=W-pm*2,ih=H-pm*2;
+      const ar=d.width/d.height,tr=iw/ih;
+      const srcW=ar>tr?d.height*tr:d.width;
+      const ratio=srcW/iw/coverScale;
+      coverOffsetX=dragOffset.startOX-(pos.x-dragOffset.x)*ratio;
+      coverOffsetY=dragOffset.startOY-(pos.y-dragOffset.y)*ratio;
+      draw();
+    }
+    e.preventDefault();return;
+  }
   if(dragMode==='text'){const tb=textBoxes.find(t=>t.id===dragTextId);if(tb){tb.x=Math.max(0,Math.min(95,((pos.x-dragOffset.x)/W)*100));tb.y=Math.max(2,Math.min(98,((pos.y-dragOffset.y)/H)*100));draw()}}
   else if(dragMode==='mosaic'){
     const m=mosaics.find(v=>v.id===dragMosaicId);if(!m)return;
@@ -852,6 +895,7 @@ window.addEventListener('mousemove',e=>{
   e.preventDefault();
 });
 window.addEventListener('mouseup',()=>{
+  if(dragging&&dragMode==='coverPan'){canvas.style.cursor=isSingleImageMode()&&coverScale>1?'grab':'crosshair'}
   // Panel drag snap apply
   if(panelDrag&&snapZone){
     applySnap(panelDrag.which,snapZone);
@@ -986,6 +1030,7 @@ function drawCore(srcB,srcA){
   else if(bgStyle==='nsfw-luxe'){bg.addColorStop(0,'#1a0a2e');bg.addColorStop(.4,'#0d0d1a');bg.addColorStop(1,'#1a0520')}
   else if(bgStyle==='nsfw-cyber'){bg.addColorStop(0,'#08080e');bg.addColorStop(1,'#0a0a12')}
   else if(bgStyle==='nsfw-elegant'){bg.addColorStop(0,'#100f16');bg.addColorStop(.5,'#1a1420');bg.addColorStop(1,'#100a18')}
+  else if(bgStyle==='single'){const isDk=document.documentElement.getAttribute('data-theme')!=='light';if(isDk){bg.addColorStop(0,'#18161e');bg.addColorStop(1,'#1a1822')}else{bg.addColorStop(0,'#f8f7fc');bg.addColorStop(1,'#f0eef5')}}
   else{bg.addColorStop(0,'#1e1535');bg.addColorStop(.5,'#2a1a42');bg.addColorStop(1,'#1a1230')}
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
   const ra=ctx.createRadialGradient(W*.2,H*.8,0,W*.2,H*.8,400);
@@ -993,9 +1038,10 @@ function drawCore(srcB,srcA){
   ctx.fillStyle=ra;ctx.fillRect(0,0,W,H);
   drawStyleDecor(bgStyle);
   const isNsfw=bgStyle.startsWith('nsfw-');
-  const isLight=bgStyle==='light';
+  const isSingle=isNsfw||bgStyle==='single';
+  const isLight=bgStyle==='light'||(bgStyle==='single'&&document.documentElement.getAttribute('data-theme')==='light');
 
-  if(isNsfw){
+  if(isSingle){
     // ===== NSFW Cover Mode: single full-canvas cover =====
     const coverImg=srcB||srcA;
     const pm=Math.round(W*.06),pr=Math.round(Math.min(W,H)*.02);
@@ -1005,11 +1051,13 @@ function drawCore(srcB,srcA){
 
     ctx.save();roundRect(ctx,ix,iy,iw,ih,pr);ctx.clip();
     if(coverImg){
-      drawImageCover(ctx,coverImg,ix,iy,iw,ih);
-      // Dark overlay for readability
-      const ov=ctx.createLinearGradient(ix,iy,ix,iy+ih);
-      ov.addColorStop(0,'rgba(0,0,0,0.15)');ov.addColorStop(0.4,'rgba(0,0,0,0.05)');ov.addColorStop(0.7,'rgba(0,0,0,0.1)');ov.addColorStop(1,'rgba(0,0,0,0.45)');
-      ctx.fillStyle=ov;ctx.fillRect(ix,iy,iw,ih);
+      drawImageCover(ctx,coverImg,ix,iy,iw,ih,coverScale,coverOffsetX,coverOffsetY);
+      if(isNsfw){
+        // Dark overlay for readability (NSFW only)
+        const ov=ctx.createLinearGradient(ix,iy,ix,iy+ih);
+        ov.addColorStop(0,'rgba(0,0,0,0.15)');ov.addColorStop(0.4,'rgba(0,0,0,0.05)');ov.addColorStop(0.7,'rgba(0,0,0,0.1)');ov.addColorStop(1,'rgba(0,0,0,0.45)');
+        ctx.fillStyle=ov;ctx.fillRect(ix,iy,iw,ih);
+      }
     }
     ctx.restore();
 
@@ -1119,6 +1167,9 @@ function drawCore(srcB,srcA){
       ctx.restore();
       if(!coverImg) drawUploadHint(ix,iy,iw,ih,'点击上传封面图',false);
     }
+
+    // Single mode (no decorations)
+    if(bgStyle==='single'&&!coverImg) drawUploadHint(ix,iy,iw,ih,'点击上传封面图',isLight);
 
     // Mosaics in cover mode
     getActiveMosaics('before',currentTime).forEach(m=>drawGlow(ix,iy,iw,ih,m));
