@@ -247,8 +247,9 @@ function changeRatio(){
 
 // ========== MEDIA ==========
 // Free-placement image system
-let slots = []; // [{img, transform:{x,y,w,h,ratio}}]
+let slots = []; // [{img, transform:{x,y,w,h,ratio}, crop:{sx,sy,sw,sh}|null}]
 let selectedSlot = -1;
+let cropMode=false,cropRect=null; // cropRect: {x,y,w,h} in canvas coords during crop
 let imgBefore=null,imgAfter=null,videoBefore=null,videoAfter=null;
 
 function isSingleImageMode(){var v=$('bgStyle').value;return v.startsWith('nsfw-')||v==='single'}
@@ -260,12 +261,13 @@ function addImageToCanvas(img){
   if(ratio>maxW/maxH){w=maxW;h=maxW/ratio}else{h=maxH;w=maxH*ratio}
   var x=W/2-w/2+(Math.random()-.5)*W*.1;
   var y=H/2-h/2+(Math.random()-.5)*H*.1;
-  slots.push({img:img,transform:{x:x,y:y,w:w,h:h,ratio:ratio}});
+  slots.push({img:img,transform:{x:x,y:y,w:w,h:h,ratio:ratio},crop:null});
   selectedSlot=slots.length-1;
   renderUploadSlots();draw();
 }
 
 function deleteSlot(idx){
+  if(cropMode)cancelCrop();
   slots.splice(idx,1);
   if(selectedSlot>=slots.length)selectedSlot=slots.length-1;
   renderUploadSlots();draw();
@@ -278,6 +280,68 @@ function moveSlotOrder(idx,dir){
   if(selectedSlot===idx)selectedSlot=ni;
   else if(selectedSlot===ni)selectedSlot=idx;
   renderUploadSlots();draw();
+}
+
+function startCrop(){
+  if(selectedSlot<0||!slots[selectedSlot])return;
+  var s=slots[selectedSlot],pi=s.transform;if(!pi)return;
+  cropMode=true;
+  // Init crop rect to current visible area
+  cropRect={x:pi.x,y:pi.y,w:pi.w,h:pi.h};
+  draw();
+}
+function applyCrop(){
+  if(!cropMode||selectedSlot<0)return;
+  var s=slots[selectedSlot],pi=s.transform,d=getSourceSize(s.img);
+  // Convert canvas crop rect to source image coordinates
+  var prevCrop=s.crop||{sx:0,sy:0,sw:d.width,sh:d.height};
+  // Map from canvas coords to source coords
+  var scaleX=prevCrop.sw/pi.w,scaleY=prevCrop.sh/pi.h;
+  var sx=prevCrop.sx+(cropRect.x-pi.x)*scaleX;
+  var sy=prevCrop.sy+(cropRect.y-pi.y)*scaleY;
+  var sw=cropRect.w*scaleX,sh=cropRect.h*scaleY;
+  // Clamp
+  sx=Math.max(0,sx);sy=Math.max(0,sy);
+  sw=Math.min(d.width-sx,sw);sh=Math.min(d.height-sy,sh);
+  s.crop={sx:sx,sy:sy,sw:sw,sh:sh};
+  // Update transform to match new crop aspect ratio, keep same center
+  var newRatio=sw/sh;
+  var cx=cropRect.x+cropRect.w/2,cy=cropRect.y+cropRect.h/2;
+  pi.w=cropRect.w;pi.h=cropRect.h;pi.x=cx-pi.w/2;pi.y=cy-pi.h/2;
+  pi.ratio=newRatio;
+  cropMode=false;cropRect=null;
+  renderUploadSlots();draw();
+}
+function cancelCrop(){cropMode=false;cropRect=null;draw()}
+function resetCrop(){
+  if(selectedSlot<0||!slots[selectedSlot])return;
+  var s=slots[selectedSlot];
+  s.crop=null;
+  // Reset ratio to original
+  var d=getSourceSize(s.img);
+  s.transform.ratio=d.width/d.height;
+  renderUploadSlots();draw();
+}
+function hitCropHandle(pos){
+  if(!cropRect)return null;
+  var r=cropRect,hs=10;
+  var edges=[
+    {id:'cl-t',y:r.y,x:r.x+r.w/2,cursor:'ns-resize'},
+    {id:'cl-b',y:r.y+r.h,x:r.x+r.w/2,cursor:'ns-resize'},
+    {id:'cl-l',x:r.x,y:r.y+r.h/2,cursor:'ew-resize'},
+    {id:'cl-r',x:r.x+r.w,y:r.y+r.h/2,cursor:'ew-resize'},
+    {id:'cl-tl',x:r.x,y:r.y,cursor:'nwse-resize'},
+    {id:'cl-tr',x:r.x+r.w,y:r.y,cursor:'nesw-resize'},
+    {id:'cl-bl',x:r.x,y:r.y+r.h,cursor:'nesw-resize'},
+    {id:'cl-br',x:r.x+r.w,y:r.y+r.h,cursor:'nwse-resize'}
+  ];
+  for(var i=0;i<edges.length;i++){
+    var e=edges[i];
+    if(Math.abs(pos.x-e.x)<hs&&Math.abs(pos.y-e.y)<hs)return e;
+  }
+  // Move entire crop rect
+  if(pos.x>=r.x&&pos.x<=r.x+r.w&&pos.y>=r.y&&pos.y<=r.y+r.h)return{id:'cl-move',cursor:'move'};
+  return null;
 }
 
 function getImgCorners(pi){
@@ -366,6 +430,20 @@ function renderUploadSlots(){
     html+='<span style="cursor:pointer;font-size:11px;color:var(--text2);padding:0 2px" onclick="event.stopPropagation();moveSlotOrder('+i+',1)" title="上移图层">↑</span>';
     html+='<span class="tb-del" onclick="event.stopPropagation();deleteSlot('+i+')">×</span>';
     html+='</div>';
+  }
+  // Crop controls for selected image
+  if(selectedSlot>=0&&selectedSlot<slots.length&&slots[selectedSlot].img){
+    if(cropMode){
+      html+='<div style="display:flex;gap:6px;margin-top:10px">';
+      html+='<button class="btn-small" onclick="applyCrop()" style="flex:1;background:#22c55e">✓ 应用裁剪</button>';
+      html+='<button class="btn-small" onclick="cancelCrop()" style="flex:1;background:var(--border);color:var(--text)">取消</button>';
+      html+='</div>';
+    } else {
+      html+='<div style="display:flex;gap:6px;margin-top:10px">';
+      html+='<button class="btn-small" onclick="startCrop()" style="flex:1">✂ 裁剪</button>';
+      if(slots[selectedSlot].crop) html+='<button class="btn-small" onclick="resetCrop()" style="flex:1;background:var(--border);color:var(--text)">还原</button>';
+      html+='</div>';
+    }
   }
   $('uploadSlotsContainer').innerHTML=html;
 }
@@ -880,6 +958,18 @@ function hitText(pos){for(var i=textBoxBounds.length-1;i>=0;i--){var b=textBoxBo
 
 canvas.addEventListener('mousedown',function(e){
   if(isPlaying)return;var pos=getCanvasPos(e);
+  // Crop mode handles
+  if(cropMode&&cropRect){
+    var ch=hitCropHandle(pos);
+    if(ch){
+      dragging=true;dragMode='crop';
+      dragOffset.handleId=ch.id;
+      dragOffset.startX=pos.x;dragOffset.startY=pos.y;
+      dragOffset.origX=cropRect.x;dragOffset.origY=cropRect.y;
+      dragOffset.origW=cropRect.w;dragOffset.origH=cropRect.h;
+      canvas.style.cursor=ch.cursor;e.preventDefault();return;
+    }
+  }
   // Text first
   var tId=hitText(pos);
   if(tId!==null){dragging=true;dragMode='text';dragTextId=tId;selectedTextId=tId;selectedMosaicId=null;
@@ -941,6 +1031,22 @@ window.addEventListener('mousemove',function(e){
     e.preventDefault();return;
   }
   if(!dragging)return;var pos2=getCanvasPos(e);
+  if(dragMode==='crop'&&cropRect){
+    var hid=dragOffset.handleId,dx=pos2.x-dragOffset.startX,dy=pos2.y-dragOffset.startY;
+    var ox=dragOffset.origX,oy=dragOffset.origY,ow=dragOffset.origW,oh=dragOffset.origH;
+    if(hid==='cl-move'){cropRect.x=ox+dx;cropRect.y=oy+dy}
+    else if(hid==='cl-t'){cropRect.y=oy+dy;cropRect.h=oh-dy}
+    else if(hid==='cl-b'){cropRect.h=oh+dy}
+    else if(hid==='cl-l'){cropRect.x=ox+dx;cropRect.w=ow-dx}
+    else if(hid==='cl-r'){cropRect.w=ow+dx}
+    else if(hid==='cl-tl'){cropRect.x=ox+dx;cropRect.y=oy+dy;cropRect.w=ow-dx;cropRect.h=oh-dy}
+    else if(hid==='cl-tr'){cropRect.y=oy+dy;cropRect.w=ow+dx;cropRect.h=oh-dy}
+    else if(hid==='cl-bl'){cropRect.x=ox+dx;cropRect.w=ow-dx;cropRect.h=oh+dy}
+    else if(hid==='cl-br'){cropRect.w=ow+dx;cropRect.h=oh+dy}
+    // Enforce min size
+    if(cropRect.w<20)cropRect.w=20;if(cropRect.h<20)cropRect.h=20;
+    draw();e.preventDefault();return;
+  }
   if(dragMode==='imgMove'){
     var pi=slots[dragOffset.slotIdx].transform;if(!pi)return;
     pi.x=pos2.x-dragOffset.x;pi.y=pos2.y-dragOffset.y;
@@ -1022,10 +1128,16 @@ document.addEventListener('keydown',function(e){
 });
 
 canvas.style.cursor='crosshair';
-// Cursor feedback for image corners/body in ALL modes
+// Cursor feedback for image corners/body/crop handles
 canvas.addEventListener('mousemove',function(e){
   if(dragging)return;
   var pos=getCanvasPos(e);
+  // Crop mode cursors
+  if(cropMode&&cropRect){
+    var ch=hitCropHandle(pos);
+    if(ch){canvas.style.cursor=ch.cursor;return}
+    canvas.style.cursor='crosshair';return;
+  }
   var corner=hitAnyCorner(pos);
   if(corner){canvas.style.cursor=corner.cursor;return}
   var hit=hitAnyImage(pos);
@@ -1298,11 +1410,45 @@ function drawCore(srcB,srcA){
   slots.forEach(function(s,i){
     if(!s.img||!s.transform)return;
     var pi=s.transform,d=getSourceSize(s.img);
-    ctx.drawImage(s.img,0,0,d.width,d.height,pi.x,pi.y,pi.w,pi.h);
+    var crop=s.crop||{sx:0,sy:0,sw:d.width,sh:d.height};
+    ctx.drawImage(s.img,crop.sx,crop.sy,crop.sw,crop.sh,pi.x,pi.y,pi.w,pi.h);
   });
-  // Draw handles for selected image (on top of all)
-  if(selectedSlot>=0&&selectedSlot<slots.length&&slots[selectedSlot].transform&&!isPlaying){
+  // Draw handles for selected image (on top, not in crop mode)
+  if(!cropMode&&selectedSlot>=0&&selectedSlot<slots.length&&slots[selectedSlot].transform&&!isPlaying){
     drawImgHandles(slots[selectedSlot].transform);
+  }
+  // Crop mode overlay
+  if(cropMode&&cropRect&&selectedSlot>=0){
+    var s=slots[selectedSlot],pi=s.transform;
+    if(pi){
+      // Darken outside crop area
+      ctx.save();ctx.fillStyle='rgba(0,0,0,0.5)';
+      ctx.fillRect(pi.x,pi.y,pi.w,cropRect.y-pi.y); // top
+      ctx.fillRect(pi.x,cropRect.y+cropRect.h,pi.w,pi.y+pi.h-cropRect.y-cropRect.h); // bottom
+      ctx.fillRect(pi.x,cropRect.y,cropRect.x-pi.x,cropRect.h); // left
+      ctx.fillRect(cropRect.x+cropRect.w,cropRect.y,pi.x+pi.w-cropRect.x-cropRect.w,cropRect.h); // right
+      // Crop border
+      ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.setLineDash([]);
+      ctx.strokeRect(cropRect.x,cropRect.y,cropRect.w,cropRect.h);
+      // Rule of thirds lines
+      ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;
+      for(var ti=1;ti<3;ti++){
+        var tx=cropRect.x+cropRect.w*ti/3,ty=cropRect.y+cropRect.h*ti/3;
+        ctx.beginPath();ctx.moveTo(tx,cropRect.y);ctx.lineTo(tx,cropRect.y+cropRect.h);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(cropRect.x,ty);ctx.lineTo(cropRect.x+cropRect.w,ty);ctx.stroke();
+      }
+      // Corner + edge handles
+      var handles=[
+        [cropRect.x,cropRect.y],[cropRect.x+cropRect.w,cropRect.y],
+        [cropRect.x,cropRect.y+cropRect.h],[cropRect.x+cropRect.w,cropRect.y+cropRect.h],
+        [cropRect.x+cropRect.w/2,cropRect.y],[cropRect.x+cropRect.w/2,cropRect.y+cropRect.h],
+        [cropRect.x,cropRect.y+cropRect.h/2],[cropRect.x+cropRect.w,cropRect.y+cropRect.h/2]
+      ];
+      handles.forEach(function(h){
+        ctx.fillStyle='#fff';ctx.fillRect(h[0]-4,h[1]-4,8,8);
+      });
+      ctx.restore();
+    }
   }
 
   // Empty state hint
