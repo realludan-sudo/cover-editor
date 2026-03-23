@@ -802,6 +802,9 @@ canvas.addEventListener('mousedown',e=>{
   const L=layout;
   const inB=pos.x>=L.leftX&&pos.x<=L.leftX+L.panelW&&pos.y>=L.leftY&&pos.y<=L.leftY+L.panelH;
   const inA=pos.x>=L.rightX&&pos.x<=L.rightX+(L.panelW2||L.panelW)&&pos.y>=L.rightY&&pos.y<=L.rightY+(L.panelH2||L.panelH);
+  // Click empty panel → trigger upload
+  if(inB&&!imgBefore&&!videoBefore){$('fileBefore').click();e.preventDefault();return}
+  if(inA&&!imgAfter&&!videoAfter){$('fileAfter').click();e.preventDefault();return}
   if(inB||inA){panelDrag={which:inB?'before':'after'};e.preventDefault();return}
   // Deselect
   selectedTextId=null;selectedMosaicId=null;
@@ -890,6 +893,32 @@ canvas.style.cursor='crosshair';
 // ========== DRAW ==========
 function drawFrame(vb,va){drawCore(vb||imgBefore,va||imgAfter)}
 function draw(){drawCore(imgBefore,imgAfter)}
+
+function drawUploadHint(x,y,w,h,label,isLight){
+  const cx=x+w/2,cy=y+h/2;
+  const sz=Math.round(Math.min(w,h)*.06);
+  // Dashed border
+  ctx.save();ctx.strokeStyle=isLight?'rgba(139,92,246,.2)':'rgba(196,181,253,.12)';ctx.lineWidth=2;ctx.setLineDash([10,6]);
+  roundRect(ctx,x+w*.1,y+h*.25,w*.8,h*.5,12);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+  // Upload arrow icon
+  const ac=isLight?'rgba(139,92,246,.35)':'rgba(196,181,253,.25)';
+  ctx.save();ctx.strokeStyle=ac;ctx.lineWidth=Math.max(2,sz*.12);ctx.lineCap='round';ctx.lineJoin='round';
+  // Arrow up
+  ctx.beginPath();ctx.moveTo(cx,cy-sz*.6);ctx.lineTo(cx,cy+sz*.2);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx-sz*.4,cy-sz*.2);ctx.lineTo(cx,cy-sz*.6);ctx.lineTo(cx+sz*.4,cy-sz*.2);ctx.stroke();
+  // Tray
+  ctx.beginPath();ctx.moveTo(cx-sz*.6,cy+sz*.45);ctx.lineTo(cx-sz*.6,cy+sz*.7);ctx.lineTo(cx+sz*.6,cy+sz*.7);ctx.lineTo(cx+sz*.6,cy+sz*.45);ctx.stroke();
+  ctx.restore();
+  // Label
+  const fs1=Math.round(Math.min(W,H)*.016);
+  ctx.fillStyle=isLight?'rgba(100,80,140,.3)':'rgba(200,180,255,.18)';
+  ctx.font=`600 ${fs1}px "DM Sans"`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(label,cx,cy+sz*1.2);
+  // Sub hint
+  const fs2=Math.round(Math.min(W,H)*.012);
+  ctx.font=`400 ${fs2}px "DM Sans"`;ctx.fillStyle=isLight?'rgba(100,80,140,.2)':'rgba(200,180,255,.12)';
+  ctx.fillText('点击上传图片或视频',cx,cy+sz*1.2+fs1*1.4);
+}
 
 function drawStyleDecor(style){
   if(style==='nsfw-luxe'){
@@ -984,14 +1013,14 @@ function drawCore(srcB,srcA){
   // Before
   ctx.save();roundRect(ctx,lX,lY,pW,pH,pr);ctx.clip();
   if(srcB)drawImageCover(ctx,srcB,lX,lY,pW,pH);
-  else{const g=ctx.createLinearGradient(lX,lY,lX,lY+pH);g.addColorStop(0,pBg);g.addColorStop(1,isLight?'#d5cfe5':'#16132a');ctx.fillStyle=g;ctx.fillRect(lX,lY,pW,pH);ctx.fillStyle=isLight?'rgba(100,80,140,.25)':'rgba(200,180,255,.15)';ctx.font=`500 ${Math.round(Math.min(W,H)*.016)}px "DM Sans"`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('上传原图 Before',lX+pW/2,lY+pH/2)}
+  else{const g=ctx.createLinearGradient(lX,lY,lX,lY+pH);g.addColorStop(0,pBg);g.addColorStop(1,isLight?'#d5cfe5':'#16132a');ctx.fillStyle=g;ctx.fillRect(lX,lY,pW,pH);drawUploadHint(lX,lY,pW,pH,'原图 Before',isLight)}
   getActiveMosaics('before',currentTime).forEach(m=>drawGlow(lX,lY,pW,pH,m));
   ctx.restore();
 
   // After
   ctx.save();roundRect(ctx,rX,rY,pW,pH,pr);ctx.clip();
   if(srcA)drawImageCover(ctx,srcA,rX,rY,pW,pH);
-  else{const g=ctx.createLinearGradient(rX,rY,rX,rY+pH);g.addColorStop(0,pBg2);g.addColorStop(1,isLight?'#e5cfd8':'#1e1228');ctx.fillStyle=g;ctx.fillRect(rX,rY,pW,pH);ctx.fillStyle=isLight?'rgba(100,80,140,.25)':'rgba(200,180,255,.15)';ctx.font=`500 ${Math.round(Math.min(W,H)*.016)}px "DM Sans"`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('上传效果图 After',rX+pW/2,rY+pH/2)}
+  else{const g=ctx.createLinearGradient(rX,rY,rX,rY+pH);g.addColorStop(0,pBg2);g.addColorStop(1,isLight?'#e5cfd8':'#1e1228');ctx.fillStyle=g;ctx.fillRect(rX,rY,pW,pH);drawUploadHint(rX,rY,pW,pH,'效果图 After',isLight)}
   getActiveMosaics('after',currentTime).forEach(m=>drawGlow(rX,rY,pW,pH,m));
   ctx.restore();
 
