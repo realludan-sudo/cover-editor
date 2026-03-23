@@ -219,9 +219,8 @@
           </div>
           <div class="checkbox-row"><input type="checkbox" id="showVideoBadge" checked><label for="showVideoBadge">显示 Video Output 标签</label></div>
           <div id="coverImageControls" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-            <div class="control-group"><div class="control-label"><span>缩放</span><span class="value" id="vCoverScale">1.0x</span></div><input type="range" id="coverScaleSlider" min="100" max="300" value="100" step="5"></div>
-            <div style="font-size:11px;color:var(--text2);margin-top:6px">上传后拖拽画布调整位置</div>
-            <button class="btn-small" style="width:100%;margin-top:8px;" onclick="resetCoverPos()">重置位置和缩放</button>
+            <div style="font-size:11px;color:var(--text2);line-height:1.8">拖拽图片移动位置<br>拖拽四角缩放大小</div>
+            <button class="btn-small" style="width:100%;margin-top:8px;" onclick="resetCoverPos()">重置位置和大小</button>
           </div>
         </div>
       </div>
@@ -251,8 +250,33 @@ function changeRatio(){
 
 // ========== MEDIA ==========
 let imgBefore=null,imgAfter=null,videoBefore=null,videoAfter=null;
-let coverScale=1,coverOffsetX=0,coverOffsetY=0;
+let coverImgX=0,coverImgY=0,coverImgW=0,coverImgH=0,coverImgRatio=1;
 function isSingleImageMode(){const v=$('bgStyle').value;return v.startsWith('nsfw-')||v==='single'}
+function initCoverImageSize(img){
+  const d=getSourceSize(img);coverImgRatio=d.width/d.height;
+  const pm=Math.round(W*.06),iw=W-pm*2,ih=H-pm*2;
+  // Fit image inside panel maintaining aspect ratio
+  if(coverImgRatio>iw/ih){coverImgW=iw;coverImgH=iw/coverImgRatio}
+  else{coverImgH=ih;coverImgW=ih*coverImgRatio}
+  coverImgX=pm+(iw-coverImgW)/2;coverImgY=pm+(ih-coverImgH)/2;
+}
+function getCoverCorners(){
+  const hs=12;// hit size
+  return[
+    {id:'tl',x:coverImgX,y:coverImgY,cursor:'nwse-resize'},
+    {id:'tr',x:coverImgX+coverImgW,y:coverImgY,cursor:'nesw-resize'},
+    {id:'bl',x:coverImgX,y:coverImgY+coverImgH,cursor:'nesw-resize'},
+    {id:'br',x:coverImgX+coverImgW,y:coverImgY+coverImgH,cursor:'nwse-resize'}
+  ];
+}
+function hitCoverCorner(pos){
+  const corners=getCoverCorners(),hs=14;
+  for(const c of corners){if(Math.abs(pos.x-c.x)<hs&&Math.abs(pos.y-c.y)<hs)return c}
+  return null;
+}
+function hitCoverImage(pos){
+  return pos.x>=coverImgX&&pos.x<=coverImgX+coverImgW&&pos.y>=coverImgY&&pos.y<=coverImgY+coverImgH;
+}
 let currentTime=0;
 
 function getVideoDuration(){
@@ -292,7 +316,7 @@ function handleUpload(which,file){
     const img=new Image();img.onload=()=>{
       if(which==='Before'){imgBefore=img;videoBefore=null;$('uploadBefore').classList.add('has-image')}
       else{imgAfter=img;videoAfter=null;$('uploadAfter').classList.add('has-image')}
-      if(isSingleImageMode()){coverScale=1;coverOffsetX=0;coverOffsetY=0;$('coverScaleSlider').value=100;$('vCoverScale').textContent='1.0x'}
+      if(isSingleImageMode())initCoverImageSize(img)
       draw();
     };img.src=URL.createObjectURL(file);
   }
@@ -324,18 +348,16 @@ function seekToTime(t){
 $('bgStyle').addEventListener('change',()=>{
   const show=isSingleImageMode();
   $('coverImageControls').style.display=show?'block':'none';
+  // Re-init cover image size when switching to cover mode
+  if(show){const ci=imgBefore||imgAfter;if(ci)initCoverImageSize(ci)}
   draw();
 });
 $('showVideoBadge').addEventListener('change',draw);
-$('coverScaleSlider').addEventListener('input',function(){
-  coverScale=parseInt(this.value)/100;
-  $('vCoverScale').textContent=coverScale.toFixed(1)+'x';draw();
-});
-function resetCoverPos(){coverScale=1;coverOffsetX=0;coverOffsetY=0;$('coverScaleSlider').value=100;$('vCoverScale').textContent='1.0x';draw()}
+function resetCoverPos(){const ci=imgBefore||imgAfter;if(ci)initCoverImageSize(ci);draw()}
 
 function hexToRgba(hex,a){return `rgba(${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)},${a})`}
 function getSourceSize(s){return s instanceof HTMLVideoElement?{width:s.videoWidth,height:s.videoHeight}:{width:s.width,height:s.height}}
-function drawImageCover(ctx,src,x,y,w,h,scale,offX,offY){const d=getSourceSize(src),ar=d.width/d.height,tr=w/h;let sx,sy,sw,sh;if(ar>tr){sh=d.height;sw=sh*tr;sx=(d.width-sw)/2;sy=0}else{sw=d.width;sh=sw/tr;sx=0;sy=(d.height-sh)/2}if(scale&&scale>1){const nw=sw/scale,nh=sh/scale;sx+=(sw-nw)/2;sy+=(sh-nh)/2;sw=nw;sh=nh}if(offX)sx+=offX;if(offY)sy+=offY;sx=Math.max(0,Math.min(d.width-sw,sx));sy=Math.max(0,Math.min(d.height-sh,sy));ctx.drawImage(src,sx,sy,sw,sh,x,y,w,h)}
+function drawImageCover(ctx,src,x,y,w,h){const d=getSourceSize(src),ar=d.width/d.height,tr=w/h;let sx,sy,sw,sh;if(ar>tr){sh=d.height;sw=sh*tr;sx=(d.width-sw)/2;sy=0}else{sw=d.width;sh=sw/tr;sx=0;sy=(d.height-sh)/2}ctx.drawImage(src,sx,sy,sw,sh,x,y,w,h)}
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
 
 // ========== MOSAICS ==========
@@ -823,11 +845,22 @@ canvas.addEventListener('mousedown',e=>{
   const isSingle=isSingleImageMode();
   // Single/NSFW cover mode
   if(isSingle){
-    if(!imgBefore&&!imgAfter&&!videoBefore&&!videoAfter){$('fileBefore').click();e.preventDefault();return}
-    // Drag to pan image
-    if((imgBefore||imgAfter)&&coverScale>1){
-      dragging=true;dragMode='coverPan';
-      dragOffset.x=pos.x;dragOffset.y=pos.y;dragOffset.startOX=coverOffsetX;dragOffset.startOY=coverOffsetY;
+    const coverImg=imgBefore||imgAfter;
+    if(!coverImg){$('fileBefore').click();e.preventDefault();return}
+    // Hit corner → resize
+    const corner=hitCoverCorner(pos);
+    if(corner){
+      dragging=true;dragMode='coverResize';
+      dragOffset.cornerId=corner.id;
+      dragOffset.startX=pos.x;dragOffset.startY=pos.y;
+      dragOffset.origX=coverImgX;dragOffset.origY=coverImgY;
+      dragOffset.origW=coverImgW;dragOffset.origH=coverImgH;
+      canvas.style.cursor=corner.cursor;e.preventDefault();return;
+    }
+    // Hit image body → move
+    if(hitCoverImage(pos)){
+      dragging=true;dragMode='coverMove';
+      dragOffset.x=pos.x-coverImgX;dragOffset.y=pos.y-coverImgY;
       canvas.style.cursor='grabbing';e.preventDefault();return;
     }
     // Deselect
@@ -863,18 +896,25 @@ window.addEventListener('mousemove',e=>{
     e.preventDefault();return;
   }
   if(!dragging)return;const pos=getCanvasPos(e);
-  if(dragMode==='coverPan'){
-    const coverImg=imgBefore||imgAfter;
-    if(coverImg){
-      const d=getSourceSize(coverImg),pm=Math.round(W*.06),iw=W-pm*2,ih=H-pm*2;
-      const ar=d.width/d.height,tr=iw/ih;
-      const srcW=ar>tr?d.height*tr:d.width;
-      const ratio=srcW/iw/coverScale;
-      coverOffsetX=dragOffset.startOX-(pos.x-dragOffset.x)*ratio;
-      coverOffsetY=dragOffset.startOY-(pos.y-dragOffset.y)*ratio;
-      draw();
-    }
-    e.preventDefault();return;
+  if(dragMode==='coverMove'){
+    coverImgX=pos.x-dragOffset.x;coverImgY=pos.y-dragOffset.y;
+    draw();e.preventDefault();return;
+  }
+  if(dragMode==='coverResize'){
+    const c=dragOffset.cornerId,oX=dragOffset.origX,oY=dragOffset.origY,oW=dragOffset.origW,oH=dragOffset.origH;
+    // Fixed corner is opposite; compute new size maintaining aspect ratio
+    let fixX,fixY;
+    if(c==='tl'){fixX=oX+oW;fixY=oY+oH}
+    else if(c==='tr'){fixX=oX;fixY=oY+oH}
+    else if(c==='bl'){fixX=oX+oW;fixY=oY}
+    else{fixX=oX;fixY=oY}
+    let newW=Math.abs(pos.x-fixX),newH=newW/coverImgRatio;
+    if(newW<40){newW=40;newH=40/coverImgRatio}
+    // Position based on which corner is fixed
+    if(c==='tl'||c==='bl')coverImgX=fixX-newW; else coverImgX=fixX;
+    if(c==='tl'||c==='tr')coverImgY=fixY-newH; else coverImgY=fixY;
+    coverImgW=newW;coverImgH=newH;
+    draw();e.preventDefault();return;
   }
   if(dragMode==='text'){const tb=textBoxes.find(t=>t.id===dragTextId);if(tb){tb.x=Math.max(0,Math.min(95,((pos.x-dragOffset.x)/W)*100));tb.y=Math.max(2,Math.min(98,((pos.y-dragOffset.y)/H)*100));draw()}}
   else if(dragMode==='mosaic'){
@@ -895,7 +935,7 @@ window.addEventListener('mousemove',e=>{
   e.preventDefault();
 });
 window.addEventListener('mouseup',()=>{
-  if(dragging&&dragMode==='coverPan'){canvas.style.cursor=isSingleImageMode()&&coverScale>1?'grab':'crosshair'}
+  if(dragging&&(dragMode==='coverMove'||dragMode==='coverResize')){canvas.style.cursor='crosshair'}
   // Panel drag snap apply
   if(panelDrag&&snapZone){
     applySnap(panelDrag.which,snapZone);
@@ -936,6 +976,15 @@ document.addEventListener('keydown',e=>{
 });
 
 canvas.style.cursor='crosshair';
+// Cursor feedback for cover mode corners/image
+canvas.addEventListener('mousemove',e=>{
+  if(dragging||!isSingleImageMode()||!(imgBefore||imgAfter))return;
+  const pos=getCanvasPos(e);
+  const corner=hitCoverCorner(pos);
+  if(corner){canvas.style.cursor=corner.cursor;return}
+  if(hitCoverImage(pos)){canvas.style.cursor='grab';return}
+  canvas.style.cursor='crosshair';
+});
 
 // ========== DRAW ==========
 function drawFrame(vb,va){drawCore(vb||imgBefore,va||imgAfter)}
@@ -1051,7 +1100,9 @@ function drawCore(srcB,srcA){
 
     ctx.save();roundRect(ctx,ix,iy,iw,ih,pr);ctx.clip();
     if(coverImg){
-      drawImageCover(ctx,coverImg,ix,iy,iw,ih,coverScale,coverOffsetX,coverOffsetY);
+      // Draw image at original aspect ratio at tracked position/size
+      const d=getSourceSize(coverImg);
+      ctx.drawImage(coverImg,0,0,d.width,d.height,coverImgX,coverImgY,coverImgW,coverImgH);
       if(isNsfw){
         // Dark overlay for readability (NSFW only)
         const ov=ctx.createLinearGradient(ix,iy,ix,iy+ih);
@@ -1060,6 +1111,20 @@ function drawCore(srcB,srcA){
       }
     }
     ctx.restore();
+    // Corner resize handles (only when not playing)
+    if(coverImg&&!isPlaying){
+      const corners=getCoverCorners(),hs=6;
+      corners.forEach(c=>{
+        ctx.save();
+        ctx.fillStyle='rgba(255,255,255,0.9)';ctx.strokeStyle='rgba(139,92,246,0.8)';ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(c.x,c.y,hs,0,Math.PI*2);ctx.fill();ctx.stroke();
+        ctx.restore();
+      });
+      // Selection border
+      ctx.save();ctx.strokeStyle='rgba(139,92,246,0.5)';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);
+      ctx.strokeRect(coverImgX,coverImgY,coverImgW,coverImgH);
+      ctx.setLineDash([]);ctx.restore();
+    }
 
     // Style-specific overlays
     if(bgStyle==='nsfw-luxe'){
