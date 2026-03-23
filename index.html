@@ -317,9 +317,14 @@ function resetCrop(){
   if(selectedSlot<0||!slots[selectedSlot])return;
   var s=slots[selectedSlot];
   s.crop=null;
-  // Reset ratio to original
-  var d=getSourceSize(s.img);
-  s.transform.ratio=d.width/d.height;
+  // Restore original aspect ratio, keep center position and area
+  var d=getSourceSize(s.img),pi=s.transform;
+  var newRatio=d.width/d.height;
+  var cx=pi.x+pi.w/2,cy=pi.y+pi.h/2;
+  var area=pi.w*pi.h;
+  pi.w=Math.sqrt(area*newRatio);pi.h=pi.w/newRatio;
+  pi.x=cx-pi.w/2;pi.y=cy-pi.h/2;
+  pi.ratio=newRatio;
   renderUploadSlots();draw();
 }
 function hitCropHandle(pos){
