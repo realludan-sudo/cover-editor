@@ -154,20 +154,9 @@
       <!-- Upload -->
       <div class="tab-pane active" id="pane-upload">
         <div class="pane-inner">
-          <div class="control-group" style="margin-bottom:12px">
-            <div class="control-label"><span>布局模式</span></div>
-            <select class="text-input" id="layoutSelect" onchange="changeLayout(this.value)">
-              <option value="single">单图</option>
-              <option value="double-lr" selected>双图横排</option>
-              <option value="double-tb">双图竖排</option>
-              <option value="triple-t">三图 上1下2</option>
-              <option value="triple-l">三图 左1右2</option>
-              <option value="quad">四宫格</option>
-              <option value="grid-6">六宫格</option>
-            </select>
-          </div>
+          <button class="btn-small" onclick="triggerAddImage()" style="width:100%;margin-bottom:10px;background:linear-gradient(135deg,var(--accent),var(--accent2))">+ 添加图片</button>
+          <input type="file" id="slotFileInput" accept="image/*" multiple>
           <div id="uploadSlotsContainer"></div>
-          <input type="file" id="slotFileInput" accept="image/*,video/*">
           <div id="trackStatus" style="font-size:11px;color:var(--accent);text-align:center;margin-top:12px;"></div>
         </div>
       </div>
@@ -257,33 +246,38 @@ function changeRatio(){
 }
 
 // ========== MEDIA ==========
-// Multi-image slot system
-let slots = [{img:null,video:null,transform:null},{img:null,video:null,transform:null}];
-let currentLayout = 'double-lr';
-
-const LAYOUTS = {
-  'single': {name:'单图',count:1,compute:function(W,H,pm,gap){var pr=Math.round(Math.min(W,H)*.015);return[{x:pm,y:pm,w:W-pm*2,h:H-pm*2}]}},
-  'double-lr': {name:'双图横排',count:2,compute:function(W,H,pm,gap){var pw=(W-pm*2-gap)/2;return[{x:pm,y:pm,w:pw,h:H-pm*2},{x:pm+pw+gap,y:pm,w:pw,h:H-pm*2}]}},
-  'double-tb': {name:'双图竖排',count:2,compute:function(W,H,pm,gap){var ph=(H-pm*2-gap)/2;return[{x:pm,y:pm,w:W-pm*2,h:ph},{x:pm,y:pm+ph+gap,w:W-pm*2,h:ph}]}},
-  'triple-t': {name:'三图 上1下2',count:3,compute:function(W,H,pm,gap){var ph=(H-pm*2-gap)/2,pw=(W-pm*2-gap)/2;return[{x:pm,y:pm,w:W-pm*2,h:ph},{x:pm,y:pm+ph+gap,w:pw,h:ph},{x:pm+pw+gap,y:pm+ph+gap,w:pw,h:ph}]}},
-  'triple-l': {name:'三图 左1右2',count:3,compute:function(W,H,pm,gap){var pw=(W-pm*2-gap)/2,ph=(H-pm*2-gap)/2;return[{x:pm,y:pm,w:pw,h:H-pm*2},{x:pm+pw+gap,y:pm,w:pw,h:ph},{x:pm+pw+gap,y:pm+ph+gap,w:pw,h:ph}]}},
-  'quad': {name:'四宫格',count:4,compute:function(W,H,pm,gap){var pw=(W-pm*2-gap)/2,ph=(H-pm*2-gap)/2;return[{x:pm,y:pm,w:pw,h:ph},{x:pm+pw+gap,y:pm,w:pw,h:ph},{x:pm,y:pm+ph+gap,w:pw,h:ph},{x:pm+pw+gap,y:pm+ph+gap,w:pw,h:ph}]}},
-  'grid-6': {name:'六宫格',count:6,compute:function(W,H,pm,gap){var pw=(W-pm*2-gap*2)/3,ph=(H-pm*2-gap)/2;var s=[];for(var r=0;r<2;r++)for(var c=0;c<3;c++)s.push({x:pm+c*(pw+gap),y:pm+r*(ph+gap),w:pw,h:ph});return s}}
-};
-
-// Backward compatibility getters
-Object.defineProperty(window,'imgBefore',{get:function(){return slots[0].img},set:function(v){slots[0].img=v},configurable:true});
-Object.defineProperty(window,'imgAfter',{get:function(){return slots[1].img},set:function(v){slots[1].img=v},configurable:true});
-
-let videoBefore=null,videoAfter=null;
+// Free-placement image system
+let slots = []; // [{img, transform:{x,y,w,h,ratio}}]
+let selectedSlot = -1;
+let imgBefore=null,imgAfter=null,videoBefore=null,videoAfter=null;
 
 function isSingleImageMode(){var v=$('bgStyle').value;return v.startsWith('nsfw-')||v==='single'}
 
-function initPanelImage(idx,img,px,py,pw,ph){
-  var d=getSourceSize(img);var ratio=d.width/d.height;
-  var w,h;
-  if(ratio>pw/ph){w=pw;h=pw/ratio}else{h=ph;w=ph*ratio}
-  slots[idx].transform={x:px+(pw-w)/2,y:py+(ph-h)/2,w:w,h:h,ratio:ratio};
+function addImageToCanvas(img){
+  var d=getSourceSize(img),ratio=d.width/d.height;
+  // Fit to 40% of canvas, centered with slight random offset
+  var maxW=W*.4,maxH=H*.4,w,h;
+  if(ratio>maxW/maxH){w=maxW;h=maxW/ratio}else{h=maxH;w=maxH*ratio}
+  var x=W/2-w/2+(Math.random()-.5)*W*.1;
+  var y=H/2-h/2+(Math.random()-.5)*H*.1;
+  slots.push({img:img,transform:{x:x,y:y,w:w,h:h,ratio:ratio}});
+  selectedSlot=slots.length-1;
+  renderUploadSlots();draw();
+}
+
+function deleteSlot(idx){
+  slots.splice(idx,1);
+  if(selectedSlot>=slots.length)selectedSlot=slots.length-1;
+  renderUploadSlots();draw();
+}
+
+function moveSlotOrder(idx,dir){
+  var ni=idx+dir;
+  if(ni<0||ni>=slots.length)return;
+  var tmp=slots[idx];slots[idx]=slots[ni];slots[ni]=tmp;
+  if(selectedSlot===idx)selectedSlot=ni;
+  else if(selectedSlot===ni)selectedSlot=idx;
+  renderUploadSlots();draw();
 }
 
 function getImgCorners(pi){
@@ -359,57 +353,32 @@ function handleUpload(which,file){
   }
 }
 
-// Upload slot system
-var uploadingSlotIdx=0;
-
-function changeLayout(type){
-  currentLayout=type;
-  var layout=LAYOUTS[type];
-  // Adjust slots array size
-  while(slots.length<layout.count)slots.push({img:null,video:null,transform:null});
-  // Clear transforms for re-init
-  slots.forEach(function(s){s.transform=null});
-  renderUploadSlots();
-  draw();
-}
+function triggerAddImage(){$('slotFileInput').click()}
 
 function renderUploadSlots(){
-  var layout=LAYOUTS[currentLayout];
-  var icons=['🖼','✨','🎯','⭐','💫','🌟'];
-  var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px">';
-  for(var i=0;i<layout.count;i++){
-    var hasImg=slots[i]&&slots[i].img;
-    html+='<div class="upload-zone '+(hasImg?'has-image':'')+'" onclick="triggerSlotUpload('+i+')" style="padding:12px 6px">';
-    html+='<span class="icon">'+icons[i%icons.length]+'</span>';
-    html+='<span class="label">图片 '+(i+1)+'</span>';
-    html+='<span class="check">✓</span>';
+  if(!slots.length){$('uploadSlotsContainer').innerHTML='<div style="text-align:center;color:var(--text2);font-size:12px;padding:12px 0">点击上方按钮或双击画布添加图片</div>';return}
+  var html='';
+  for(var i=0;i<slots.length;i++){
+    var sel=i===selectedSlot;
+    html+='<div class="tb-item'+(sel?' active':'')+'" onclick="selectedSlot='+i+';renderUploadSlots();draw()" style="gap:6px">';
+    html+='<span class="tb-text" style="font-size:11px">图片 '+(i+1)+'</span>';
+    html+='<span style="cursor:pointer;font-size:11px;color:var(--text2);padding:0 2px" onclick="event.stopPropagation();moveSlotOrder('+i+',-1)" title="下移图层">↓</span>';
+    html+='<span style="cursor:pointer;font-size:11px;color:var(--text2);padding:0 2px" onclick="event.stopPropagation();moveSlotOrder('+i+',1)" title="上移图层">↑</span>';
+    html+='<span class="tb-del" onclick="event.stopPropagation();deleteSlot('+i+')">×</span>';
     html+='</div>';
   }
-  html+='</div>';
   $('uploadSlotsContainer').innerHTML=html;
 }
 
-function triggerSlotUpload(idx){
-  uploadingSlotIdx=idx;
-  $('slotFileInput').click();
-}
-
 $('slotFileInput').addEventListener('change',function(e){
-  if(!e.target.files[0])return;
-  var file=e.target.files[0];
-  var idx=uploadingSlotIdx;
-  if(file.type.startsWith('video/')){
-    // Video handling - only for slots 0 and 1
-    if(idx<=1)handleUpload(idx===0?'Before':'After',file);
-  } else {
-    var img=new Image();
-    img.onload=function(){
-      slots[idx].img=img;
-      slots[idx].transform=null;
-      renderUploadSlots();
-      draw();
-    };
-    img.src=URL.createObjectURL(file);
+  var files=e.target.files;if(!files.length)return;
+  for(var fi=0;fi<files.length;fi++){
+    (function(file){
+      if(!file.type.startsWith('image/'))return;
+      var img=new Image();
+      img.onload=function(){addImageToCanvas(img)};
+      img.src=URL.createObjectURL(file);
+    })(files[fi]);
   }
   e.target.value='';
 });
@@ -938,42 +907,19 @@ canvas.addEventListener('mousedown',function(e){
   var hitIdx=hitAnyImage(pos);
   if(hitIdx>=0){
     var pi2=slots[hitIdx].transform;
+    selectedSlot=hitIdx;renderUploadSlots();
     dragging=true;dragMode='imgMove';
     dragOffset.slotIdx=hitIdx;dragOffset.x=pos.x-pi2.x;dragOffset.y=pos.y-pi2.y;
     canvas.style.cursor='grabbing';e.preventDefault();return;
   }
 
-  // Check if clicking an empty slot -> upload
-  var isSingle=isSingleImageMode();
-  if(!isSingle){
-    var tpl=LAYOUTS[currentLayout];
-    var pm2=Math.round(W*.03),gap2=Math.round(Math.min(W,H)*.015);
-    var slotRects=tpl.compute(W,H,pm2,gap2);
-    for(var si=0;si<slotRects.length;si++){
-      var r=slotRects[si];
-      if(pos.x>=r.x&&pos.x<=r.x+r.w&&pos.y>=r.y&&pos.y<=r.y+r.h){
-        if(!slots[si]||!slots[si].img){
-          triggerSlotUpload(si);
-          e.preventDefault();
-          return;
-        }
-      }
-    }
-  }
-
-  // Single/NSFW cover mode: click empty -> upload
-  if(isSingle&&!imgBefore&&!imgAfter){triggerSlotUpload(0);e.preventDefault();return}
-
-  // Panel drag for layout snap (only in non-single mode)
-  if(!isSingle){
-    var L=layout;
-    var inB=pos.x>=L.leftX&&pos.x<=L.leftX+L.panelW&&pos.y>=L.leftY&&pos.y<=L.leftY+L.panelH;
-    var inA=pos.x>=L.rightX&&pos.x<=L.rightX+(L.panelW2||L.panelW)&&pos.y>=L.rightY&&pos.y<=L.rightY+(L.panelH2||L.panelH);
-    if(inB||inA){panelDrag={which:inB?'before':'after'};e.preventDefault();return}
-  }
   // Deselect
-  selectedTextId=null;selectedMosaicId=null;
-  renderTextBoxList();showTextProps();renderMosaicList();showMosaicProps();draw();
+  selectedSlot=-1;selectedTextId=null;selectedMosaicId=null;
+  renderUploadSlots();renderTextBoxList();showTextProps();renderMosaicList();showMosaicProps();draw();
+});
+// Double-click canvas to add image
+canvas.addEventListener('dblclick',function(e){
+  if(!isSingleImageMode())triggerAddImage();
 });
 
 window.addEventListener('mousemove',function(e){
@@ -1071,6 +1017,7 @@ document.addEventListener('keydown',function(e){
     e.preventDefault();
     if(selectedTextId){deleteTextBox(selectedTextId)}
     else if(selectedMosaicId){deleteMosaic(selectedMosaicId)}
+    else if(selectedSlot>=0){deleteSlot(selectedSlot)}
   }
 });
 
@@ -1344,57 +1291,30 @@ function drawCore(srcB,srcA){
     getActiveMosaics('before',currentTime).forEach(function(m){drawGlow(ix,iy,iw,ih,m)});
     getActiveMosaics('after',currentTime).forEach(function(m){drawGlow(ix,iy,iw,ih,m)});
   } else {
-  // ===== Multi-Slot Layout Mode =====
-  var pBgs=[isLight?'#e8e4f0':'#1e1a2e',isLight?'#f0e4ec':'#2a1e30',isLight?'#e4e8f0':'#1e2a2e',isLight?'#f0e8e4':'#2e1e2a',isLight?'#e8f0e4':'#2e2a1e',isLight?'#e4f0e8':'#1e2e2a'];
-  var pm3=Math.round(W*.03),gap3=Math.round(Math.min(W,H)*.015);
-  var pr3=Math.round(Math.min(W,H)*.015);
-  var tpl=LAYOUTS[currentLayout];
-  var slotRects=tpl.compute(W,H,pm3,gap3);
-  // Set layout for backward compat (use first two slots)
-  if(slotRects.length>=2){
-    layout={leftX:slotRects[0].x,leftY:slotRects[0].y,rightX:slotRects[1].x,rightY:slotRects[1].y,panelW:slotRects[0].w,panelH:slotRects[0].h,panelW2:slotRects[1].w,panelH2:slotRects[1].h};
-  } else {
-    layout={leftX:slotRects[0].x,leftY:slotRects[0].y,rightX:slotRects[0].x,rightY:slotRects[0].y,panelW:slotRects[0].w,panelH:slotRects[0].h,panelW2:slotRects[0].w,panelH2:slotRects[0].h};
-  }
+  // ===== Free Placement Mode =====
+  layout={leftX:0,leftY:0,rightX:W,rightY:H,panelW:W,panelH:H,panelW2:W,panelH2:H};
 
-  slotRects.forEach(function(rect,i){
-    var s=slots[i];
-    var src=s?s.img:null;
-    // For slot 0 and 1, use passed-in srcB/srcA (video frame support)
-    if(i===0&&srcB)src=srcB;
-    if(i===1&&srcA)src=srcA;
-    ctx.save();roundRect(ctx,rect.x,rect.y,rect.w,rect.h,pr3);ctx.clip();
-    if(src){
-      if(!s.transform)initPanelImage(i,src,rect.x,rect.y,rect.w,rect.h);
-      var pi4=s.transform,d2=getSourceSize(src);
-      ctx.drawImage(src,0,0,d2.width,d2.height,pi4.x,pi4.y,pi4.w,pi4.h);
-    } else {
-      var g3=ctx.createLinearGradient(rect.x,rect.y,rect.x,rect.y+rect.h);
-      g3.addColorStop(0,pBgs[i%pBgs.length]);g3.addColorStop(1,isLight?'#d5cfe5':'#16132a');
-      ctx.fillStyle=g3;ctx.fillRect(rect.x,rect.y,rect.w,rect.h);
-      drawUploadHint(rect.x,rect.y,rect.w,rect.h,'图片 '+(i+1),isLight);
-    }
-    // Mosaics (only first 2 slots)
-    if(i===0)getActiveMosaics('before',currentTime).forEach(function(m){drawGlow(rect.x,rect.y,rect.w,rect.h,m)});
-    if(i===1)getActiveMosaics('after',currentTime).forEach(function(m){drawGlow(rect.x,rect.y,rect.w,rect.h,m)});
-    ctx.restore();
-    if(src&&s.transform&&!isPlaying)drawImgHandles(s.transform);
+  // Draw all images freely placed
+  slots.forEach(function(s,i){
+    if(!s.img||!s.transform)return;
+    var pi=s.transform,d=getSourceSize(s.img);
+    ctx.drawImage(s.img,0,0,d.width,d.height,pi.x,pi.y,pi.w,pi.h);
   });
-
-  // Labels (only for double-lr which is the classic Before/After)
-  if(currentLayout==='double-lr'&&slotRects.length>=2){
-    var lFs=Math.round(Math.min(W,H)*.013);
-    function drawLbl(t,x,y,af){ctx.font='700 '+lFs+'px "JetBrains Mono",monospace';var tw=ctx.measureText(t).width,pw2=tw+24,ph2=lFs+16;roundRect(ctx,x,y,pw2,ph2,ph2/2);ctx.fillStyle=af?(isLight?'rgba(139,92,246,.12)':'rgba(139,92,246,.2)'):(isLight?'rgba(255,255,255,.8)':'rgba(255,255,255,.1)');ctx.fill();ctx.fillStyle=af?'#7c3aed':(isLight?'#5b5278':'#c4b5fd');ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,x+pw2/2,y+ph2/2)}
-    drawLbl('ORIGINAL',slotRects[0].x+16,slotRects[0].y+16,false);drawLbl('AI RESULT',slotRects[1].x+slotRects[1].w-120,slotRects[1].y+16,true);
+  // Draw handles for selected image (on top of all)
+  if(selectedSlot>=0&&selectedSlot<slots.length&&slots[selectedSlot].transform&&!isPlaying){
+    drawImgHandles(slots[selectedSlot].transform);
   }
 
-  if($('showVideoBadge').checked&&currentLayout==='double-lr'&&slotRects.length>=2){var vFs=Math.round(Math.min(W,H)*.011),vt='VIDEO OUTPUT';ctx.font='700 '+vFs+'px "JetBrains Mono",monospace';var vw=ctx.measureText(vt).width+30,rr=slotRects[1],vx=rr.x+rr.w-vw-16,vy=rr.y+rr.h-36;roundRect(ctx,vx,vy,vw,26,8);ctx.fillStyle=isLight?'rgba(139,92,246,.1)':'rgba(139,92,246,.2)';ctx.fill();ctx.beginPath();ctx.arc(vx+12,vy+13,4,0,Math.PI*2);ctx.fillStyle='#ef4444';ctx.fill();ctx.fillStyle='#7c3aed';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(vt,vx+22,vy+13)}
+  // Empty state hint
+  if(!slots.length){
+    drawUploadHint(0,0,W,H,'双击或点击按钮添加图片',isLight);
+  }
 
   // Corner marks
   ctx.strokeStyle=isLight?'rgba(196,181,253,.4)':'rgba(196,181,253,.15)';ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(W-24,16);ctx.lineTo(W-60,16);ctx.moveTo(W-24,16);ctx.lineTo(W-24,52);ctx.stroke();
   ctx.beginPath();ctx.moveTo(24,H-16);ctx.lineTo(60,H-16);ctx.moveTo(24,H-16);ctx.lineTo(24,H-52);ctx.stroke();
-  } // end normal mode
+  } // end free mode
 
   // Text
   textBoxBounds=[];
